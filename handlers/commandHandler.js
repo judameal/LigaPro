@@ -22,7 +22,7 @@ async function registerCommands(client) {
   try {
     console.log('🔄 Registrando slash commands...');
     await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
+      Routes.applicationGuildCommands(process.env.CLIENT_ID, '1497653232552513536'),
       { body: commands }
     );
     console.log('✅ Slash commands registrados correctamente.');

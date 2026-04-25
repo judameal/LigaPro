@@ -19,7 +19,7 @@ module.exports = {
         { name: '👤 Usuario', value: `${member.user.tag}`, inline: true },
         { name: '📅 Cuenta creada', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true }
       )
-      .setImage('https://i.imgur.com/your-banner.png') // Puedes cambiar esto por tu banner
+      .setImage('https://i0.wp.com/radiosport.com.ec/wp-content/uploads/2024/12/LigaPro.webp?fit=700%2C380&ssl=1') // Puedes cambiar esto por tu banner
       .setFooter({ text: `ID: ${member.user.id}` })
       .setTimestamp();
 
