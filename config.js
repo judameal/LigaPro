@@ -1,0 +1,23 @@
+module.exports = {
+  // Roles de administrador
+  ADMIN_ROLES: [
+    '1497690995964383393',
+    '1497690952662388897',
+    '1497690484720668792',
+  ],
+
+  // Canales
+  WELCOME_CHANNEL_ID: '1497682737363157002',
+  GOODBYE_CHANNEL_ID: '1497682867260756079',
+  AUTOROLES_CHANNEL_ID: '1497741419899781200',
+
+  // Colores embed
+  COLORS: {
+    SUCCESS: 0x2ecc71,
+    ERROR: 0xe74c3c,
+    INFO: 0x3498db,
+    WARNING: 0xf39c12,
+    WELCOME: 0x9b59b6,
+    GOODBYE: 0x95a5a6,
+  },
+};

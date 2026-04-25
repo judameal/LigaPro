@@ -1,41 +1,25 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require("discord.js");
+require('dotenv').config();
+const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
+const { loadCommands, registerCommands } = require('./handlers/commandHandler');
+const { loadEvents } = require('./handlers/eventHandler');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildModeration,
+  ],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
-const commands = [
-  new SlashCommandBuilder()
-    .setName("ping")
-    .setDescription("Verifica si el bot está activo")
-    .toJSON()
-];
+client.commands = new Collection();
 
-client.once("ready", async () => {
-  console.log(`✅ Bot encendido como ${client.user.tag}`);
-
-  const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-
-  try {
-    console.log("🔄 Registrando comandos...");
-
-    await rest.put(
-      Routes.applicationCommands(client.user.id),
-      { body: commands }
-    );
-
-    console.log("✅ Comandos registrados");
-  } catch (error) {
-    console.error(error);
-  }
-});
-
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  if (interaction.commandName === "ping") {
-    await interaction.reply("🏓 Pong! Bot activo 24/7");
-  }
-});
-
-client.login(process.env.TOKEN);
+(async () => {
+  await loadCommands(client);
+  await loadEvents(client);
+  await registerCommands(client);
+  client.login(process.env.TOKEN);
+})();
