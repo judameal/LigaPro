@@ -17,7 +17,7 @@ const SUB_DT_ROLE_ID  = '1497693705539424467';
 const CANAL_FICHAJES  = '1497684673625587934';
 const LIMITE_JUGADORES = 15;
 
-const DB_PATH = path.join(__dirname, '../data/fichajes.json');
+const DB_PATH = path.join(__dirname, '../database/fichajes.json');
 
 // Mapa equipo → { roleId, nombre, logo }
 const EQUIPOS = {
@@ -43,10 +43,23 @@ const EQUIPOS = {
 //  HELPERS DB
 // ─────────────────────────────────────────────
 function leerDB() {
-  if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify({ jugadores: {}, cooldowns: {}, ofertas_pendientes: {} }, null, 2));
+  const EMPTY = { jugadores: {}, cooldowns: {}, ofertas_pendientes: {} };
+  try {
+    if (!fs.existsSync(DB_PATH)) {
+      fs.writeFileSync(DB_PATH, JSON.stringify(EMPTY, null, 2));
+      return EMPTY;
+    }
+    const raw = fs.readFileSync(DB_PATH, 'utf8').trim();
+    if (!raw) {
+      fs.writeFileSync(DB_PATH, JSON.stringify(EMPTY, null, 2));
+      return EMPTY;
+    }
+    return JSON.parse(raw);
+  } catch (_) {
+    // JSON corrupto: resetear y continuar sin crashear
+    fs.writeFileSync(DB_PATH, JSON.stringify(EMPTY, null, 2));
+    return EMPTY;
   }
-  return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
 }
 
 function guardarDB(data) {
