@@ -1,10 +1,7 @@
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  AttachmentBuilder,
 } = require('discord.js');
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const path = require('path');
 
 const { EQUIPOS, leerDB, tiempoRelativo } = require('./fichar');
 
@@ -31,167 +28,6 @@ const COLORES_EQUIPO = {
   '1497695403158671571': { primario: '#65afd1', secundario: '#ffffff', texto: 'rgb(255, 255, 255)' }, // Guayaquil City
 };
 
-// ─────────────────────────────────────────────
-//  GENERA LA IMAGEN DE PLANTILLA
-// ─────────────────────────────────────────────
-async function generarImagenPlantilla({ equipoNombre, equipoLogo, colores, jugadores, dtNombre, subdtNombre }) {
-  const W = 900;
-  // Altura dinámica según jugadores
-  const filas = Math.ceil(jugadores.length / 3);
-  const H = 340 + filas * 100 + 60;
-
-  const canvas = createCanvas(W, H);
-  const ctx    = canvas.getContext('2d');
-
-  const { primario, secundario } = colores;
-
-  // ── FONDO ──
-  const grad = ctx.createLinearGradient(0, 0, W, H);
-  grad.addColorStop(0,   secundario === '#FFFFFF' ? '#0d0d0d' : secundario);
-  grad.addColorStop(1,   '#111111');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // ── BANDA SUPERIOR ──
-  ctx.fillStyle = primario;
-  ctx.fillRect(0, 0, W, 8);
-
-  // ── LOGO DEL EQUIPO ──
-  try {
-    const logoImg = await loadImage(equipoLogo).catch(() => null);
-    if (logoImg) {
-      // Círculo de fondo para el logo
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(100, 120, 70, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fill();
-      ctx.clip();
-      ctx.drawImage(logoImg, 30, 50, 140, 140);
-      ctx.restore();
-    }
-  } catch (_) {}
-
-  // ── NOMBRE DEL EQUIPO ──
-  ctx.font = 'bold 42px "Arial"';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillText(equipoNombre.toUpperCase(), 190, 100);
-
-  // ── LINEA DECORATIVA ──
-  ctx.fillStyle = primario;
-  ctx.fillRect(190, 110, 400, 4);
-
-  // ── DT / SUB-DT ──
-  ctx.font = 'bold 18px "Arial"';
-  ctx.fillStyle = primario;
-  ctx.fillText('🧑‍💼 DIRECTOR TÉCNICO', 190, 145);
-  ctx.font = '17px "Arial"';
-  ctx.fillStyle = '#CCCCCC';
-  ctx.fillText(dtNombre || 'Sin asignar', 190, 168);
-
-  if (subdtNombre) {
-    ctx.font = 'bold 16px "Arial"';
-    ctx.fillStyle = primario;
-    ctx.fillText('🧑‍💼 SUB-DIRECTOR TÉCNICO', 460, 145);
-    ctx.font = '16px "Arial"';
-    ctx.fillStyle = '#CCCCCC';
-    ctx.fillText(subdtNombre, 460, 168);
-  }
-
-  // ── CONTADOR JUGADORES ──
-  ctx.font = 'bold 15px "Arial"';
-  ctx.fillStyle = '#888888';
-  ctx.fillText(`PLANTILLA — ${jugadores.length}/15 JUGADORES`, 190, 205);
-
-  // ── SEPARADOR ──
-  ctx.fillStyle = '#333333';
-  ctx.fillRect(20, 220, W - 40, 1);
-
-  // ── TARJETAS DE JUGADORES ──
-  const cardW  = 265;
-  const cardH  = 80;
-  const startX = 30;
-  const startY = 240;
-  const gap    = 20;
-
-  for (let i = 0; i < jugadores.length; i++) {
-    const col  = i % 3;
-    const fila = Math.floor(i / 3);
-    const x    = startX + col * (cardW + gap);
-    const y    = startY + fila * (cardH + gap);
-
-    // Fondo de la tarjeta
-    ctx.fillStyle = '#1e1e1e';
-    roundRect(ctx, x, y, cardW, cardH, 10);
-    ctx.fill();
-
-    // Borde izquierdo de color
-    ctx.fillStyle = primario;
-    ctx.fillRect(x, y, 4, cardH);
-
-    // Número de dorsal
-    ctx.font = 'bold 22px "Arial"';
-    ctx.fillStyle = primario;
-    ctx.fillText(`#${i + 1}`, x + 15, y + 30);
-
-    // Nombre del jugador
-    const nombre = jugadores[i].nombre.length > 18
-      ? jugadores[i].nombre.slice(0, 16) + '…'
-      : jugadores[i].nombre;
-    ctx.font = 'bold 15px "Arial"';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(nombre, x + 55, y + 30);
-
-    // Tiempo fichado
-    ctx.font = '13px "Arial"';
-    ctx.fillStyle = '#999999';
-    ctx.fillText(`⏱ Fichado ${jugadores[i].tiempo}`, x + 55, y + 52);
-
-    // Avatar circular (si tiene)
-    if (jugadores[i].avatar) {
-      try {
-        const av = await loadImage(jugadores[i].avatar).catch(() => null);
-        if (av) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(x + cardW - 32, y + 20, 18, 0, Math.PI * 2);
-          ctx.clip();
-          ctx.drawImage(av, x + cardW - 50, y + 2, 36, 36);
-          ctx.restore();
-        }
-      } catch (_) {}
-    }
-  }
-
-  // ── PIE ──
-  ctx.fillStyle = '#555555';
-  ctx.font = '13px "Arial"';
-  ctx.fillText(`Actualizado: ${new Date().toLocaleDateString('es-EC', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 30, H - 18);
-
-  ctx.fillStyle = primario;
-  ctx.fillRect(0, H - 6, W, 6);
-
-  return canvas.toBuffer('image/png');
-}
-
-// Helper: rect redondeado
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-// ─────────────────────────────────────────────
-//  COMANDO
-// ─────────────────────────────────────────────
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('plantilla')
@@ -211,87 +47,112 @@ module.exports = {
       return interaction.editReply({ content: '❌ Ese rol no es un equipo válido de la liga.' });
     }
 
-    // Obtener todos los miembros del servidor
     await guild.members.fetch();
 
-    const miembros = guild.members.cache.filter(m => m.roles.cache.has(equipoRol.id) && !m.user.bot);
+    const miembros = guild.members.cache.filter(
+      m => m.roles.cache.has(equipoRol.id) && !m.user.bot
+    );
 
     if (miembros.size === 0) {
       return interaction.editReply({
-        content: `📋 El equipo **${equipoInfo.nombre}** no tiene jugadores en este momento.`,
+        content: `📋 El equipo **${equipoInfo.nombre}** no tiene jugadores registrados.`,
       });
     }
-
-    // Separar DT, SUB-DT y jugadores
-    let dtNombre    = null;
-    let subdtNombre = null;
-    const jugadores = [];
 
     const db = leerDB();
 
+    let dtMiembro    = null;
+    let subdtMiembro = null;
+    const jugadores  = [];
+
     for (const [, miembro] of miembros) {
-      if (miembro.roles.cache.has(DT_ROLE_ID)) {
-        dtNombre = miembro.displayName;
-      } else if (miembro.roles.cache.has(SUB_DT_ROLE_ID)) {
-        subdtNombre = miembro.displayName;
+      const esDT    = miembro.roles.cache.has(DT_ROLE_ID);
+      const esSubDT = miembro.roles.cache.has(SUB_DT_ROLE_ID);
+
+      if (esDT)    dtMiembro    = miembro;
+      if (esSubDT) subdtMiembro = miembro;
+
+      // No incluir DT ni SUB-DT en la lista de jugadores
+      if (esDT || esSubDT) continue;
+
+      const datos  = db.jugadores[miembro.id];
+      const tiempo = datos ? tiempoRelativo(datos.fechaFichaje) : 'hace tiempo';
+
+      jugadores.push({ miembro, tiempo });
+    }
+
+    // Ordenar jugadores por fecha de fichaje (más antiguo primero)
+    jugadores.sort((a, b) => {
+      const fa = db.jugadores[a.miembro.id]?.fechaFichaje ?? 0;
+      const fb = db.jugadores[b.miembro.id]?.fechaFichaje ?? 0;
+      return fa - fb;
+    });
+
+    const color = COLORES_EQUIPO[equipoRol.id] ?? 0xFFD700;
+    const total = jugadores.length + (dtMiembro ? 1 : 0) + (subdtMiembro ? 1 : 0);
+
+    // ── Embed principal con logo del equipo ──
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setAuthor({
+        name: 'Liga Ecuador · Plantilla Oficial',
+        iconURL: 'https://flagcdn.com/w40/ec.png',
+      })
+      .setTitle(`${equipoInfo.nombre}`)
+      .setThumbnail(equipoInfo.logo)
+      .setDescription(`**${total}/15** jugadores en plantilla`)
+      .setTimestamp()
+      .setFooter({ text: 'Los tiempos se actualizan en cada consulta' });
+
+    // ── Sección cuerpo técnico ──
+    if (dtMiembro || subdtMiembro) {
+      embed.addFields({ name: '━━━━━━  CUERPO TÉCNICO  ━━━━━━', value: '\u200B', inline: false });
+
+      if (dtMiembro) {
+        const datosDT = db.jugadores[dtMiembro.id];
+        const tiempoDT = datosDT ? tiempoRelativo(datosDT.fechaFichaje) : 'hace tiempo';
+        embed.addFields({
+          name: '🏅 Director Técnico',
+          value: `${dtMiembro}\n\`${dtMiembro.user.tag}\`\n*Fichado ${tiempoDT}*`,
+          inline: true,
+        });
       }
 
-      // Todos los del equipo van a la plantilla (incluyendo DT/SUB-DT)
-      const datosFichaje = db.jugadores[miembro.id];
-      const tiempo = datosFichaje ? tiempoRelativo(datosFichaje.fechaFichaje) : 'hace tiempo';
-
-      jugadores.push({
-        nombre: miembro.displayName,
-        avatar: miembro.user.displayAvatarURL({ extension: 'png', size: 64 }),
-        tiempo,
-      });
+      if (subdtMiembro) {
+        const datosSDT = db.jugadores[subdtMiembro.id];
+        const tiempoSDT = datosSDT ? tiempoRelativo(datosSDT.fechaFichaje) : 'hace tiempo';
+        embed.addFields({
+          name: '🎖️ Sub-Director Técnico',
+          value: `${subdtMiembro}\n\`${subdtMiembro.user.tag}\`\n*Fichado ${tiempoSDT}*`,
+          inline: true,
+        });
+      }
     }
 
-    const colores = COLORES_EQUIPO[equipoRol.id] || { primario: '#FFD700', secundario: '#111111' };
+    // ── Sección jugadores ──
+    if (jugadores.length > 0) {
+      embed.addFields({ name: '━━━━━━━  JUGADORES  ━━━━━━━', value: '\u200B', inline: false });
 
-    // Generar imagen
-    let imageBuffer;
-    try {
-      imageBuffer = await generarImagenPlantilla({
-        equipoNombre: equipoInfo.nombre,
-        equipoLogo:   equipoInfo.logo,
-        colores,
-        jugadores,
-        dtNombre,
-        subdtNombre,
-      });
-    } catch (err) {
-      console.error('[PLANTILLA] Error generando imagen:', err);
-      // Fallback: embed de texto
-      const embed = new EmbedBuilder()
-        .setTitle(`📋 Plantilla — ${equipoInfo.nombre}`)
-        .setThumbnail(equipoInfo.logo)
-        .setColor(parseInt(colores.primario.replace('#', ''), 16))
-        .setDescription(jugadores.map((j, i) => `**#${i+1}** ${j.nombre} — ${j.tiempo}`).join('\n'))
-        .addFields(
-          { name: '🧑‍💼 Director Técnico',     value: dtNombre    || 'Sin asignar', inline: true },
-          { name: '🧑‍💼 Sub-Director Técnico', value: subdtNombre || 'Sin asignar', inline: true },
-          { name: '👥 Total',                  value: `${jugadores.length}/15`, inline: true },
-        )
-        .setTimestamp()
-        .setFooter({ text: 'Liga Ecuador' });
+      for (const j of jugadores) {
+        embed.addFields({
+          name: j.miembro.displayName,
+          value: `${j.miembro}\n\`${j.miembro.user.tag}\`\n*Fichado ${j.tiempo}*`,
+          inline: true,
+        });
+      }
 
-      return interaction.editReply({ embeds: [embed] });
+      // Rellenar para que la última fila quede alineada (Discord hace columnas de 3)
+      const resto = jugadores.length % 3;
+      if (resto === 1) {
+        embed.addFields(
+          { name: '\u200B', value: '\u200B', inline: true },
+          { name: '\u200B', value: '\u200B', inline: true },
+        );
+      } else if (resto === 2) {
+        embed.addFields({ name: '\u200B', value: '\u200B', inline: true });
+      }
     }
 
-    const attachment = new AttachmentBuilder(imageBuffer, { name: `plantilla-${equipoInfo.nombre.replace(/\s+/g, '-').toLowerCase()}.png` });
-
-    const embed = new EmbedBuilder()
-      .setTitle(`📋 ${equipoInfo.nombre} — Plantilla Oficial`)
-      .setColor(parseInt(colores.primario.replace('#', ''), 16))
-      .setImage(`attachment://plantilla-${equipoInfo.nombre.replace(/\s+/g, '-').toLowerCase()}.png`)
-      .addFields(
-        { name: '👥 Jugadores', value: `${jugadores.length}/15`, inline: true },
-        { name: '🧑‍💼 Director Técnico', value: dtNombre || 'Sin asignar', inline: true },
-      )
-      .setTimestamp()
-      .setFooter({ text: 'Liga Ecuador · Los tiempos se actualizan en cada consulta' });
-
-    await interaction.editReply({ embeds: [embed], files: [attachment] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
