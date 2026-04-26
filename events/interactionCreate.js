@@ -4,12 +4,12 @@ const ficharCmd = require('../commands/fichar');
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
-    // Slash commands
+
+    // ── SLASH COMMANDS ──
     if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
-
-            try {
+      try {
         await command.execute(interaction);
       } catch (error) {
         console.error(`[CMD ERROR] /${interaction.commandName}:`, error);
@@ -23,16 +23,12 @@ module.exports = {
       return;
     }
 
-
-    // Botones (tickets)
+    // ── BOTONES ──
     if (interaction.isButton()) {
-       const id = interaction.customId;
+      const id = interaction.customId;
       if (!id) return;
-      const ticketHandler = require('./ticketButtons');
-      await ticketHandler.execute(interaction, client);
-    }
 
-    try {
+      try {
         if (id.startsWith('fichar_aceptar_')) {
           await ficharCmd.handleAceptar(interaction);
           return;
@@ -41,7 +37,10 @@ module.exports = {
           await ficharCmd.handleRechazar(interaction);
           return;
         }
-        // ── Aquí puedes agregar más bloques de botones de otros comandos ──
+        // Tickets y demás botones
+        const ticketHandler = require('./ticketButtons');
+        await ticketHandler.execute(interaction, client);
+
       } catch (error) {
         console.error(`[BUTTON ERROR] ${id}:`, error);
         const msg = { content: '❌ Ocurrió un error al procesar este botón.', ephemeral: true };
@@ -51,5 +50,6 @@ module.exports = {
           await interaction.reply(msg).catch(() => {});
         }
       }
+    }
   }
-}
+};
