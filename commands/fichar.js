@@ -17,7 +17,7 @@ const SUB_DT_ROLE_ID  = '1497693705539424467';
 const CANAL_FICHAJES  = '1497684673625587934';
 const LIMITE_JUGADORES = 15;
 
-const DB_PATH = path.join(__dirname, '../database/fichajes.json');
+const DB_PATH = path.join(__dirname, '../data/fichajes.json');
 
 // Mapa equipo → { roleId, nombre, logo }
 const EQUIPOS = {
