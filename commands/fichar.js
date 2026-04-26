@@ -56,7 +56,13 @@ function leerDB() {
       fs.writeFileSync(DB_PATH, JSON.stringify(EMPTY, null, 2));
       return EMPTY;
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    // Asegurar que siempre existan todas las claves aunque el JSON esté incompleto
+    return {
+      jugadores:          parsed.jugadores          ?? {},
+      cooldowns:          parsed.cooldowns          ?? {},
+      ofertas_pendientes: parsed.ofertas_pendientes ?? {},
+    };
   } catch (_) {
     try {
       if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
