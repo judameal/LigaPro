@@ -1,5 +1,5 @@
 const { ADMIN_ROLES } = require('../config');
-
+const ficharCmd = require('../commands/fichar');
 module.exports = {
   name: 'interactionCreate',
   async execute(interaction, client) {
@@ -26,5 +26,14 @@ module.exports = {
       const ticketHandler = require('./ticketButtons');
       await ticketHandler.execute(interaction, client);
     }
+
+    if (interaction.customId.startsWith('fichar_aceptar_')) {
+  await ficharCmd.handleAceptar(interaction);
+  return;
+}
+if (interaction.customId.startsWith('fichar_rechazar_')) {
+  await ficharCmd.handleRechazar(interaction);
+  return;
+}
   },
 };
