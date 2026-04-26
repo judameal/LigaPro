@@ -1,12 +1,4 @@
-const fs = require('fs');
-const path = require('path');
-
-const autorolDataPath = path.join(__dirname, '..', 'data', 'autoroles.json');
-
-function getAutorolData() {
-  if (!fs.existsSync(autorolDataPath)) return {};
-  return JSON.parse(fs.readFileSync(autorolDataPath));
-}
+const { MessageFlags } = require('discord.js');
 
 module.exports = {
   name: 'messageReactionAdd',
@@ -16,8 +8,8 @@ module.exports = {
       try { await reaction.fetch(); } catch { return; }
     }
 
-    const data = getAutorolData();
-    const entry = data[reaction.message.id];
+    if (!global.autorolData) return;
+    const entry = global.autorolData[reaction.message.id];
     if (!entry) return;
     if (reaction.emoji.name !== '✅') return;
 

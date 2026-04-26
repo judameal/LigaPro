@@ -1,19 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { isAdmin, noPermReply } = require('./utils');
 const { COLORS, AUTOROLES_CHANNEL_ID } = require('../config');
-const fs = require('fs');
-const path = require('path');
-
-const autorolDataPath = path.join(__dirname, '..', 'data', 'autoroles.json');
-
-function getAutorolData() {
-  if (!fs.existsSync(autorolDataPath)) return {};
-  return JSON.parse(fs.readFileSync(autorolDataPath));
-}
-
-function saveAutorolData(data) {
-  fs.writeFileSync(autorolDataPath, JSON.stringify(data, null, 2));
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -34,7 +21,7 @@ module.exports = {
 
     const channel = interaction.guild.channels.cache.get(AUTOROLES_CHANNEL_ID);
     if (!channel) {
-      return interaction.reply({ content: '❌ No se encontró el canal de autoroles.', ephemeral: true });
+      return interaction.reply({ content: '❌ No se encontró el canal de autoroles.', flags: MessageFlags.Ephemeral });
     }
 
     const embed = new EmbedBuilder()
@@ -47,11 +34,13 @@ module.exports = {
     const msg = await channel.send({ embeds: [embed] });
     await msg.react('✅');
 
-    // Guardar el mensaje para el sistema de reacciones
-    const data = getAutorolData();
-    data[msg.id] = { roleId: rol.id, guildId: interaction.guild.id };
-    saveAutorolData(data);
+    // Guardar en memoria global (persiste mientras el bot esté corriendo)
+    if (!global.autorolData) global.autorolData = {};
+    global.autorolData[msg.id] = { roleId: rol.id, guildId: interaction.guild.id };
 
-    await interaction.reply({ content: `✅ Mensaje de autorol creado en ${channel} para el rol **${rol.name}**.`, ephemeral: true });
+    await interaction.reply({
+      content: `✅ Mensaje de autorol creado en ${channel} para el rol **${rol.name}**.`,
+      flags: MessageFlags.Ephemeral,
+    });
   },
 };

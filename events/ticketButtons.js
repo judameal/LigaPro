@@ -1,20 +1,8 @@
-const { EmbedBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
+const { EmbedBuilder, PermissionFlagsBits, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { ADMIN_ROLES, COLORS } = require('../config');
-const fs = require('fs');
-const path = require('path');
 
-const ticketDataPath = path.join(__dirname, '..', 'data', 'tickets.json');
-
-function getTicketData() {
-  if (!fs.existsSync(ticketDataPath)) {
-    fs.writeFileSync(ticketDataPath, JSON.stringify({ counter: 0, tickets: {} }));
-  }
-  return JSON.parse(fs.readFileSync(ticketDataPath));
-}
-
-function saveTicketData(data) {
-  fs.writeFileSync(ticketDataPath, JSON.stringify(data, null, 2));
-}
+// Datos en memoria (no depende del sistema de archivos de Railway)
+if (!global.ticketData) global.ticketData = { counter: 0, tickets: {} };
 
 module.exports = {
   name: 'ticketButtons',
@@ -31,11 +19,10 @@ module.exports = {
 
     if (!ticketTypes[customId]) return;
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const data = getTicketData();
+    const data = global.ticketData;
 
-    // Verificar si ya tiene un ticket abierto
     const existingTicket = Object.values(data.tickets).find(
       t => t.userId === member.id && t.status === 'open'
     );
@@ -43,28 +30,19 @@ module.exports = {
     if (existingTicket) {
       const ch = guild.channels.cache.get(existingTicket.channelId);
       return interaction.editReply({
-        content: `❌ Ya tienes un ticket abierto: ${ch ? ch.toString() : 'ticket-' + existingTicket.number}. Por favor ciérralo antes de abrir uno nuevo.`,
+        content: `❌ Ya tienes un ticket abierto: ${ch ? ch.toString() : 'ticket-' + existingTicket.number}. Ciérralo antes de abrir uno nuevo.`,
       });
     }
 
-    // Crear nuevo ticket
     data.counter += 1;
     const ticketNumber = data.counter;
     const channelName = `ticket-${ticketNumber}`;
 
-    // Permisos del canal
     const permissionOverwrites = [
-      {
-        id: guild.roles.everyone,
-        deny: [PermissionFlagsBits.ViewChannel],
-      },
-      {
-        id: member.id,
-        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-      },
+      { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
+      { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
     ];
 
-    // Añadir permisos para roles admin
     for (const roleId of ADMIN_ROLES) {
       permissionOverwrites.push({
         id: roleId,
@@ -82,10 +60,9 @@ module.exports = {
       });
     } catch (err) {
       console.error('Error creando canal de ticket:', err);
-      return interaction.editReply({ content: '❌ No se pudo crear el canal del ticket.' });
+      return interaction.editReply({ content: '❌ No se pudo crear el canal. Verifica que el bot tenga el permiso **Gestionar Canales**.' });
     }
 
-    // Guardar datos del ticket
     data.tickets[ticketNumber] = {
       number: ticketNumber,
       channelId: ticketChannel.id,
@@ -94,9 +71,7 @@ module.exports = {
       status: 'open',
       createdAt: new Date().toISOString(),
     };
-    saveTicketData(data);
 
-    // Menciones de admins
     const adminMentions = ADMIN_ROLES.map(id => `<@&${id}>`).join(' ');
 
     const embed = new EmbedBuilder()
@@ -115,7 +90,6 @@ module.exports = {
       .setFooter({ text: `Ticket ID: ${ticketNumber}` })
       .setTimestamp();
 
-    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`close_ticket_${ticketNumber}`)
@@ -123,26 +97,20 @@ module.exports = {
         .setStyle(ButtonStyle.Danger)
     );
 
-    await ticketChannel.send({
-      content: `${adminMentions} | ${member}`,
-      embeds: [embed],
-      components: [row],
+    await ticketChannel.send({ content: `${adminMentions} | ${member}`, embeds: [embed], components: [row] });
+    await interaction.editReply({ content: `✅ Tu ticket ha sido creado: ${ticketChannel}` });
+
+    const collector = ticketChannel.createMessageComponentCollector({
+      filter: i => i.customId === `close_ticket_${ticketNumber}`,
     });
 
-    await interaction.editReply({
-      content: `✅ Tu ticket ha sido creado: ${ticketChannel}`,
-    });
-
-    // Manejar cierre de ticket
-    const collector = ticketChannel.createMessageComponentCollector({ filter: i => i.customId === `close_ticket_${ticketNumber}` });
     collector.on('collect', async (btnInteraction) => {
-      const isAdmin = btnInteraction.member.roles.cache.some(r => ADMIN_ROLES.includes(r.id));
-      if (!isAdmin && btnInteraction.user.id !== member.id) {
-        return btnInteraction.reply({ content: '❌ No puedes cerrar este ticket.', ephemeral: true });
+      const isAdminUser = btnInteraction.member.roles.cache.some(r => ADMIN_ROLES.includes(r.id));
+      if (!isAdminUser && btnInteraction.user.id !== member.id) {
+        return btnInteraction.reply({ content: '❌ No puedes cerrar este ticket.', flags: MessageFlags.Ephemeral });
       }
 
       data.tickets[ticketNumber].status = 'closed';
-      saveTicketData(data);
 
       const closeEmbed = new EmbedBuilder()
         .setColor(COLORS.ERROR)
