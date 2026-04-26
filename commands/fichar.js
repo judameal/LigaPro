@@ -17,7 +17,8 @@ const SUB_DT_ROLE_ID  = '1497693705539424467';
 const CANAL_FICHAJES  = '1497684673625587934';
 const LIMITE_JUGADORES = 15;
 
-const DB_PATH = path.join(__dirname, '../data/fichajes.json');
+const DB_DIR  = path.join(__dirname, '../data');
+const DB_PATH = path.join(DB_DIR, 'fichajes.json');
 
 // Mapa equipo → { roleId, nombre, logo }
 const EQUIPOS = {
@@ -45,6 +46,7 @@ const EQUIPOS = {
 function leerDB() {
   const EMPTY = { jugadores: {}, cooldowns: {}, ofertas_pendientes: {} };
   try {
+    if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
     if (!fs.existsSync(DB_PATH)) {
       fs.writeFileSync(DB_PATH, JSON.stringify(EMPTY, null, 2));
       return EMPTY;
@@ -56,14 +58,21 @@ function leerDB() {
     }
     return JSON.parse(raw);
   } catch (_) {
-    // JSON corrupto: resetear y continuar sin crashear
-    fs.writeFileSync(DB_PATH, JSON.stringify(EMPTY, null, 2));
+    try {
+      if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+      fs.writeFileSync(DB_PATH, JSON.stringify(EMPTY, null, 2));
+    } catch (_2) {}
     return EMPTY;
   }
 }
 
 function guardarDB(data) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+  try {
+    if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error('[DB] Error al guardar fichajes.json:', e.message);
+  }
 }
 
 function tiempoRelativo(timestamp) {
@@ -98,7 +107,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: 64 });
 
     const reclutador = interaction.member;
     const jugador    = interaction.options.getMember('jugador');
@@ -245,7 +254,7 @@ module.exports = {
 
     // Solo el jugador al que va dirigida la oferta puede aceptar
     if (interaction.user.id !== jugadorId) {
-      return interaction.reply({ content: '❌ Esta oferta no es para ti.', ephemeral: true });
+      return interaction.reply({ content: '❌ Esta oferta no es para ti.', flags: 64 });
     }
 
     await interaction.deferUpdate();
@@ -255,7 +264,7 @@ module.exports = {
     const equipoInfo = EQUIPOS[equipoRolId];
 
     if (!jugador || !equipoInfo) {
-      return interaction.followUp({ content: '❌ No se pudo procesar la oferta.', ephemeral: true });
+      return interaction.followUp({ content: '❌ No se pudo procesar la oferta.', flags: 64 });
     }
 
     // Verificar límite de nuevo por si acaso
@@ -266,7 +275,7 @@ module.exports = {
       guardarDB(db);
       return interaction.followUp({
         content: `❌ El equipo **${equipoInfo.nombre}** ya llegó al límite de ${LIMITE_JUGADORES} jugadores. No se puede completar el fichaje.`,
-        ephemeral: false,
+        
       });
     }
 
@@ -274,7 +283,7 @@ module.exports = {
     try {
       await jugador.roles.add(equipoRolId);
     } catch (e) {
-      return interaction.followUp({ content: '❌ No pude asignar el rol. Verifica mis permisos.', ephemeral: true });
+      return interaction.followUp({ content: '❌ No pude asignar el rol. Verifica mis permisos.', flags: 64 });
     }
 
     // Guardar en DB
@@ -310,7 +319,7 @@ module.exports = {
     const [, , jugadorId, equipoRolId, reclutadorId] = interaction.customId.split('_');
 
     if (interaction.user.id !== jugadorId) {
-      return interaction.reply({ content: '❌ Esta oferta no es para ti.', ephemeral: true });
+      return interaction.reply({ content: '❌ Esta oferta no es para ti.', flags: 64 });
     }
 
     await interaction.deferUpdate();
