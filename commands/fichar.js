@@ -256,14 +256,19 @@ module.exports = {
   //  MANEJADORES DE BOTONES (exportados para interaction_create.js)
   // ─────────────────────────────────────────────
   async handleAceptar(interaction) {
+    try {
+      await interaction.deferUpdate();
+    } catch (err) {
+      console.error("Error al diferir la interacción (Aceptar):", err);
+      return;
+    }
+
     const [, , jugadorId, equipoRolId, reclutadorId] = interaction.customId.split('_');
 
     // Solo el jugador al que va dirigida la oferta puede aceptar
     if (interaction.user.id !== jugadorId) {
-      return interaction.reply({ content: '❌ Esta oferta no es para ti.', flags: 64 });
+      return interaction.followUp({ content: '❌ Esta oferta no es para ti.', flags: 64 });
     }
-
-    await interaction.deferUpdate();
 
     const guild      = interaction.guild;
     const jugador    = await guild.members.fetch(jugadorId).catch(() => null);
@@ -322,13 +327,18 @@ module.exports = {
   },
 
   async handleRechazar(interaction) {
+    try {
+      await interaction.deferUpdate();
+    } catch (err) {
+      console.error("Error al diferir la interacción (Rechazar):", err);
+      return;
+    }
+
     const [, , jugadorId, equipoRolId, reclutadorId] = interaction.customId.split('_');
 
     if (interaction.user.id !== jugadorId) {
-      return interaction.reply({ content: '❌ Esta oferta no es para ti.', flags: 64 });
+      return interaction.followUp({ content: '❌ Esta oferta no es para ti.', flags: 64 });
     }
-
-    await interaction.deferUpdate();
 
     const equipoInfo = EQUIPOS[equipoRolId];
     const db = leerDB();

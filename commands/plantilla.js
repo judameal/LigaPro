@@ -1,8 +1,4 @@
-const {
-  SlashCommandBuilder,
-  EmbedBuilder,
-} = require('discord.js');
-
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { EQUIPOS, leerDB, tiempoRelativo } = require('./fichar');
 
 const DT_ROLE_ID     = '1497693671141671034';
@@ -25,7 +21,7 @@ const COLORES_EQUIPO = {
   '1497694629758505060': { primario: '#0b6303', secundario: '#92902b', texto: '#ffffff' }, // Orense
   '1497694651589722203': { primario: '#e00d31', secundario: '#ffffff', texto: '#000000' }, // Técnico Universitario
   '1497694729792393216': { primario: '#437ab9', secundario: '#FFFFFF', texto: '#FFFFFF' }, // U. Católica
-  '1497695403158671571': { primario: '#65afd1', secundario: '#ffffff', texto: 'rgb(255, 255, 255)' }, // Guayaquil City
+  '1497695403158671571': { primario: '#65afd1', secundario: '#ffffff', texto: '#ffffff' }, // Guayaquil City
 };
 
 module.exports = {
@@ -37,122 +33,169 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    await interaction.deferReply();
+    try {
+      await interaction.deferReply();
 
-    const equipoRol  = interaction.options.getRole('equipo');
-    const guild      = interaction.guild;
-    const equipoInfo = EQUIPOS[equipoRol.id];
+      const equipoRol  = interaction.options.getRole('equipo');
+      const guild      = interaction.guild;
+      const equipoInfo = EQUIPOS[equipoRol.id];
 
-    if (!equipoInfo) {
-      return interaction.editReply({ content: '❌ Ese rol no es un equipo válido de la liga.' });
-    }
+      if (!equipoInfo) {
+        return interaction.editReply({ content: '❌ **Error:** Ese rol no es un equipo válido de la liga.' });
+      }
 
-    await guild.members.fetch();
+      // Fetch solo para garantizar que tengamos los miembros en caché
+      try {
+        await guild.members.fetch();
+      } catch (fetchError) {
+        console.error("Error al obtener los miembros del servidor:", fetchError);
+        return interaction.editReply({ content: '⚠️ **Error:** No se pudieron obtener los miembros del servidor. Inténtalo de nuevo más tarde.' });
+      }
 
-    const miembros = guild.members.cache.filter(
-      m => m.roles.cache.has(equipoRol.id) && !m.user.bot
-    );
+      const miembros = guild.members.cache.filter(
+        m => m.roles.cache.has(equipoRol.id) && !m.user.bot
+      );
 
-    if (miembros.size === 0) {
-      return interaction.editReply({
-        content: `📋 El equipo **${equipoInfo.nombre}** no tiene jugadores registrados.`,
+      if (miembros.size === 0) {
+        return interaction.editReply({
+          content: `📋 El equipo **${equipoInfo.nombre}** no tiene jugadores registrados actualmente.`,
+        });
+      }
+
+      let db;
+      try {
+        db = leerDB();
+      } catch (dbError) {
+        console.error("Error al leer la base de datos:", dbError);
+        return interaction.editReply({ content: '💾 **Error:** Hubo un problema al acceder a la base de datos de los jugadores.' });
+      }
+
+      let dtMiembro    = null;
+      let subdtMiembro = null;
+      const jugadores  = [];
+
+      for (const [, miembro] of miembros) {
+        const esDT    = miembro.roles.cache.has(DT_ROLE_ID);
+        const esSubDT = miembro.roles.cache.has(SUB_DT_ROLE_ID);
+
+        if (esDT) {
+          dtMiembro = miembro;
+          continue;
+        }
+        if (esSubDT) {
+          subdtMiembro = miembro;
+          continue;
+        }
+
+        const datos  = db.jugadores && db.jugadores[miembro.id] ? db.jugadores[miembro.id] : null;
+        const tiempo = datos ? tiempoRelativo(datos.fechaFichaje) : 'Desconocido / Sin ficha';
+
+        jugadores.push({ miembro, tiempo });
+      }
+
+      // Ordenar jugadores por fecha de fichaje (más antiguo primero)
+      jugadores.sort((a, b) => {
+        const fa = (db.jugadores && db.jugadores[a.miembro.id]?.fechaFichaje) || 0;
+        const fb = (db.jugadores && db.jugadores[b.miembro.id]?.fechaFichaje) || 0;
+        return fa - fb;
       });
-    }
 
-    const db = leerDB();
+      // El error principal: color era un objeto de COLORES_EQUIPO, no un color hexadecimal válido.
+      const colorData = COLORES_EQUIPO[equipoRol.id];
+      const colorEmbed = colorData && colorData.primario ? colorData.primario : '#FFD700';
 
-    let dtMiembro    = null;
-    let subdtMiembro = null;
-    const jugadores  = [];
+      const totalJugadores = jugadores.length + (dtMiembro ? 1 : 0) + (subdtMiembro ? 1 : 0);
 
-    for (const [, miembro] of miembros) {
-      const esDT    = miembro.roles.cache.has(DT_ROLE_ID);
-      const esSubDT = miembro.roles.cache.has(SUB_DT_ROLE_ID);
+      // ── Embed principal con logo del equipo ──
+      const embed = new EmbedBuilder()
+        .setColor(colorEmbed)
+        .setAuthor({
+          name: 'Liga Ecuador · Plantilla Oficial',
+          iconURL: 'https://flagcdn.com/w40/ec.png',
+        })
+        .setTitle(`${equipoInfo.nombre}`)
+        .setThumbnail(equipoInfo.logo || null) // Evitar fallo si no hay logo
+        .setDescription(`**${totalJugadores}/15** jugadores en plantilla`)
+        .setTimestamp()
+        .setFooter({ text: 'Los tiempos se actualizan en cada consulta' });
 
-      if (esDT)    dtMiembro    = miembro;
-      if (esSubDT) subdtMiembro = miembro;
+      // Verificar límite de campos (máximo 25 por Embed de Discord)
+      let camposAgregados = 0;
 
-      // No incluir DT ni SUB-DT en la lista de jugadores
-      if (esDT || esSubDT) continue;
+      // ── Sección cuerpo técnico ──
+      if (dtMiembro || subdtMiembro) {
+        embed.addFields({ name: '━━━━━━  CUERPO TÉCNICO  ━━━━━━', value: '\u200B', inline: false });
+        camposAgregados++;
 
-      const datos  = db.jugadores[miembro.id];
-      const tiempo = datos ? tiempoRelativo(datos.fechaFichaje) : 'hace tiempo';
+        if (dtMiembro) {
+          const datosDT = db.jugadores && db.jugadores[dtMiembro.id] ? db.jugadores[dtMiembro.id] : null;
+          const tiempoDT = datosDT ? tiempoRelativo(datosDT.fechaFichaje) : 'Desconocido / Sin ficha';
+          embed.addFields({
+            name: '🏅 Director Técnico',
+            value: `${dtMiembro}\n\`${dtMiembro.user.tag}\`\n*Fichado ${tiempoDT}*`,
+            inline: true,
+          });
+          camposAgregados++;
+        }
 
-      jugadores.push({ miembro, tiempo });
-    }
-
-    // Ordenar jugadores por fecha de fichaje (más antiguo primero)
-    jugadores.sort((a, b) => {
-      const fa = db.jugadores[a.miembro.id]?.fechaFichaje ?? 0;
-      const fb = db.jugadores[b.miembro.id]?.fechaFichaje ?? 0;
-      return fa - fb;
-    });
-
-    const color = COLORES_EQUIPO[equipoRol.id] ?? 0xFFD700;
-    const total = jugadores.length + (dtMiembro ? 1 : 0) + (subdtMiembro ? 1 : 0);
-
-    // ── Embed principal con logo del equipo ──
-    const embed = new EmbedBuilder()
-      .setColor(color)
-      .setAuthor({
-        name: 'Liga Ecuador · Plantilla Oficial',
-        iconURL: 'https://flagcdn.com/w40/ec.png',
-      })
-      .setTitle(`${equipoInfo.nombre}`)
-      .setThumbnail(equipoInfo.logo)
-      .setDescription(`**${total}/15** jugadores en plantilla`)
-      .setTimestamp()
-      .setFooter({ text: 'Los tiempos se actualizan en cada consulta' });
-
-    // ── Sección cuerpo técnico ──
-    if (dtMiembro || subdtMiembro) {
-      embed.addFields({ name: '━━━━━━  CUERPO TÉCNICO  ━━━━━━', value: '\u200B', inline: false });
-
-      if (dtMiembro) {
-        const datosDT = db.jugadores[dtMiembro.id];
-        const tiempoDT = datosDT ? tiempoRelativo(datosDT.fechaFichaje) : 'hace tiempo';
-        embed.addFields({
-          name: '🏅 Director Técnico',
-          value: `${dtMiembro}\n\`${dtMiembro.user.tag}\`\n*Fichado ${tiempoDT}*`,
-          inline: true,
-        });
+        if (subdtMiembro) {
+          const datosSDT = db.jugadores && db.jugadores[subdtMiembro.id] ? db.jugadores[subdtMiembro.id] : null;
+          const tiempoSDT = datosSDT ? tiempoRelativo(datosSDT.fechaFichaje) : 'Desconocido / Sin ficha';
+          embed.addFields({
+            name: '🎖️ Sub-Director Técnico',
+            value: `${subdtMiembro}\n\`${subdtMiembro.user.tag}\`\n*Fichado ${tiempoSDT}*`,
+            inline: true,
+          });
+          camposAgregados++;
+        }
       }
 
-      if (subdtMiembro) {
-        const datosSDT = db.jugadores[subdtMiembro.id];
-        const tiempoSDT = datosSDT ? tiempoRelativo(datosSDT.fechaFichaje) : 'hace tiempo';
-        embed.addFields({
-          name: '🎖️ Sub-Director Técnico',
-          value: `${subdtMiembro}\n\`${subdtMiembro.user.tag}\`\n*Fichado ${tiempoSDT}*`,
-          inline: true,
-        });
+      // ── Sección jugadores ──
+      if (jugadores.length > 0) {
+        if (camposAgregados < 25) {
+          embed.addFields({ name: '━━━━━━━  JUGADORES  ━━━━━━━', value: '\u200B', inline: false });
+          camposAgregados++;
+        }
+
+        for (const j of jugadores) {
+          if (camposAgregados >= 24) { // Límite para evitar crasheos (25 max)
+            embed.addFields({ name: '⚠️ Límite alcanzado', value: 'Hay más jugadores, pero el panel está lleno.', inline: false });
+            break; 
+          }
+          embed.addFields({
+            name: j.miembro.displayName,
+            value: `${j.miembro}\n\`${j.miembro.user.tag}\`\n*Fichado ${j.tiempo}*`,
+            inline: true,
+          });
+          camposAgregados++;
+        }
+
+        // Rellenar para que la última fila quede alineada (Discord hace columnas de 3)
+        const resto = jugadores.length % 3;
+        if (resto === 1 && camposAgregados < 24) {
+          embed.addFields(
+            { name: '\u200B', value: '\u200B', inline: true },
+            { name: '\u200B', value: '\u200B', inline: true },
+          );
+        } else if (resto === 2 && camposAgregados < 25) {
+          embed.addFields({ name: '\u200B', value: '\u200B', inline: true });
+        }
+      }
+
+      await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+      console.error("Error en comando plantilla:", error);
+      try {
+        const errorMsg = '❌ **Ocurrió un error inesperado al procesar la plantilla.**\nPor favor, intenta de nuevo o contacta a un administrador.';
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply({ content: errorMsg, embeds: [] });
+        } else {
+          await interaction.reply({ content: errorMsg, ephemeral: true });
+        }
+      } catch (e) {
+        console.error("Error crítico al enviar mensaje de fallo:", e);
       }
     }
-
-    // ── Sección jugadores ──
-    if (jugadores.length > 0) {
-      embed.addFields({ name: '━━━━━━━  JUGADORES  ━━━━━━━', value: '\u200B', inline: false });
-
-      for (const j of jugadores) {
-        embed.addFields({
-          name: j.miembro.displayName,
-          value: `${j.miembro}\n\`${j.miembro.user.tag}\`\n*Fichado ${j.tiempo}*`,
-          inline: true,
-        });
-      }
-
-      // Rellenar para que la última fila quede alineada (Discord hace columnas de 3)
-      const resto = jugadores.length % 3;
-      if (resto === 1) {
-        embed.addFields(
-          { name: '\u200B', value: '\u200B', inline: true },
-          { name: '\u200B', value: '\u200B', inline: true },
-        );
-      } else if (resto === 2) {
-        embed.addFields({ name: '\u200B', value: '\u200B', inline: true });
-      }
-    }
-
-    await interaction.editReply({ embeds: [embed] });
   },
 };
