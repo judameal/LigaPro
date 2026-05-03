@@ -32,7 +32,7 @@ module.exports = {
         '📱 **Social Media**\nNoticias, entrevistas y contenido exclusivo de la liga.\n\n' +
         '🆚 **Amistosos**\nCuadrar amistosos con otros equipos del servidor.\n\n' +
         '🤝 **Partners**\nInformación sobre alianzas y oportunidades con otras ligas.')
-      .setImage('https://i.imgur.com/G5gH1aW.png') // Puedes cambiar la imagen si quieres
+      .setImage('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSRcS2AHxGC_7ya2vbgsDyQMQ7gm_VhJLuwHQ&s') // Puedes cambiar la imagen si quieres
       .setFooter({ text: 'Selecciona las reacciones abajo para gestionar tus roles.' })
       .setTimestamp();
 
