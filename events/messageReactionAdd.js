@@ -1,6 +1,15 @@
 const { PermissionsBitField } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+
+// Configuración de roles y emojis (emoji -> roleID)
+const ROLES_CONFIG = {
+  '📢': '1497691429445832815',
+  '⚽': '1497691648535171162',
+  '📅': '1497691693221285999',
+  '📊': '1497691694756266086',
+  '📱': '1497691774808883291',
+  '🆚': '1500626740551352340',
+  '🤝': '1500626740551352340'
+};
 
 module.exports = {
   name: 'messageReactionAdd',
@@ -17,21 +26,11 @@ module.exports = {
         await reaction.message.fetch();
       }
 
-      // Cargar configuración de autoroles
-      const filePath = path.join(__dirname, '../data/autoroles.json');
-      if (!fs.existsSync(filePath)) return;
-      
-      const autorolesData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-
-      // Verificar si el mensaje tiene autoroles configurados
-      const messageConfig = autorolesData[reaction.message.id];
-      if (!messageConfig) return;
-
       // Obtener el nombre del emoji o su ID si es personalizado
       const emojiKey = reaction.emoji.id ? reaction.emoji.id : reaction.emoji.name;
       
-      // Verificar si el emoji coincide con uno configurado (emoji -> rolID)
-      const roleId = messageConfig[emojiKey];
+      // Verificar si el emoji coincide con uno configurado en ROLES_CONFIG
+      const roleId = ROLES_CONFIG[emojiKey];
       if (!roleId) return;
 
       const guild = reaction.message.guild;
