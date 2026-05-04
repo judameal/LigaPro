@@ -13,7 +13,7 @@ const ROLES_CONFIG = {
 
 module.exports = {
   name: 'messageReactionRemove',
-  async execute(reaction, user, client) {
+  async execute(reaction, user) {
     try {
       // Ignorar bots
       if (user.bot) return;
@@ -42,8 +42,9 @@ module.exports = {
         return;
       }
 
-      // Verificar que el bot tiene permisos
-      const botMember = await guild.members.fetch(client.user.id);
+      // Obtener el miembro del bot en el servidor
+      const botMember = guild.members.me;
+      
       if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
         console.warn(`[AutoRol] El bot no tiene permiso de Gestionar Roles.`);
         return;
