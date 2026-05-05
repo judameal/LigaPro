@@ -20,7 +20,7 @@ const LIMITE_JUGADORES = 15;
 const DB_DIR  = path.join(__dirname, '../data');
 const DB_PATH = path.join(DB_DIR, 'fichajes.json');
 
-// Mapa equipo → { roleId, nombre, logo }
+// Mapa equipo → { nombre, logo }
 const EQUIPOS = {
   '1497694196205879326': { nombre: 'Aucas',                   logo: 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiyyJrbKvxU7LVyrzB1dmv_-dCSiQu_l6TtTMWUxXUEPYxW3L0QyyyLizmMchUQYkhBGuJUO8MwdaXwrayHenUz5a_bWbpsTf39FJDNBeIgJGOGpzbaEvvjN98ZjPBoKkOQexd1EJUbS0E/s1600/Sociedad+Deportiva+Aucas.png' },
   '1497694246189273279': { nombre: 'Barcelona SC',            logo: 'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhiI1aCB5eRZPvsuNSunyhyphenhyphentO_oRzsUpbm1QE8xTN-S5si2jhQFzZ0OAvDtyNj56Hr2ZvT95Cg8b-memcKwrlv__H-LhCS0290SlY5oOs_ELyIRf8aoZn1PGUi4L5EvoO0Yq0HEycIFb-X1IhWwIu4ue3ZVxx3WxhB-avENOxgtm4K5DBTG8lHMfeRzJZw/s16000/Barcelona%20Sporting%20Club.png' },
@@ -57,17 +57,13 @@ function leerDB() {
       return EMPTY;
     }
     const parsed = JSON.parse(raw);
-    // Asegurar que siempre existan todas las claves aunque el JSON esté incompleto
     return {
       jugadores:          parsed.jugadores          ?? {},
       cooldowns:          parsed.cooldowns          ?? {},
       ofertas_pendientes: parsed.ofertas_pendientes ?? {},
     };
-  } catch (_) {
-    try {
-      if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
-      fs.writeFileSync(DB_PATH, JSON.stringify(EMPTY, null, 2));
-    } catch (_2) {}
+  } catch (err) {
+    console.error('[DB] Error al leer fichajes.json:', err.message);
     return EMPTY;
   }
 }
@@ -113,264 +109,321 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    await interaction.deferReply({ flags: 64 });
+    try {
+      // Diferir la respuesta inmediatamente para evitar el "This interaction failed"
+      await interaction.deferReply({ ephemeral: true });
 
-    const reclutador = interaction.member;
-    const jugador    = interaction.options.getMember('jugador');
-    const equipoRol  = interaction.options.getRole('equipo');
-    const guild      = interaction.guild;
+      const reclutador = interaction.member;
+      const jugador    = interaction.options.getMember('jugador');
+      const equipoRol  = interaction.options.getRole('equipo');
+      const guild      = interaction.guild;
 
-    // ── 1. El equipo pasado es válido?
-    const equipoInfo = EQUIPOS[equipoRol.id];
-    if (!equipoInfo) {
-      return interaction.editReply({ content: '❌ Ese rol no es un equipo válido de la liga.' });
-    }
-
-    // ── 2. Reclutador tiene DT o SUB-DT?
-    const esDT    = reclutador.roles.cache.has(DT_ROLE_ID);
-    const esSubDT = reclutador.roles.cache.has(SUB_DT_ROLE_ID);
-    if (!esDT && !esSubDT) {
-      return interaction.editReply({ content: '❌ Solo el **Director Técnico** o el **Sub-Director Técnico** pueden fichar jugadores.' });
-    }
-
-    // ── 3. El reclutador pertenece al equipo que quiere fichar?
-    if (!reclutador.roles.cache.has(equipoRol.id)) {
-      return interaction.editReply({ content: `❌ No puedes fichar para **${equipoInfo.nombre}** porque no formas parte de ese equipo.` });
-    }
-
-    // ── 4. No puedes ficharte a ti mismo
-    if (jugador.id === reclutador.id) {
-      return interaction.editReply({ content: '❌ No puedes ficharte a ti mismo.' });
-    }
-
-    // ── 5. El jugador ya tiene equipo?
-    const tieneEquipo = Object.keys(EQUIPOS).some(id => jugador.roles.cache.has(id));
-    if (tieneEquipo) {
-      const equipoActual = Object.entries(EQUIPOS).find(([id]) => jugador.roles.cache.has(id));
-      return interaction.editReply({
-        content: `❌ **${jugador.displayName}** ya pertenece a **${equipoActual ? equipoActual[1].nombre : 'un equipo'}**. Debe ser dado de baja primero.`,
-      });
-    }
-
-    // ── 6. Límite de 15 jugadores
-    const miembrosConRol = (await guild.members.fetch()).filter(m => m.roles.cache.has(equipoRol.id));
-    if (miembrosConRol.size >= LIMITE_JUGADORES) {
-      return interaction.editReply({
-        content: `❌ **${equipoInfo.nombre}** ya alcanzó el límite de **${LIMITE_JUGADORES} jugadores**. No se permiten más fichajes.`,
-      });
-    }
-
-    // ── 7. Cooldown: ¿hay oferta rechazada reciente?
-    const db = leerDB();
-    const cooldownKey = `${jugador.id}-${equipoRol.id}`;
-    const cooldown = db.cooldowns[cooldownKey];
-    if (cooldown && Date.now() - cooldown < 24 * 60 * 60 * 1000) {
-      const restante = Math.ceil((24 * 60 * 60 * 1000 - (Date.now() - cooldown)) / 3600000);
-      return interaction.editReply({
-        content: `⏳ **${jugador.displayName}** rechazó una oferta de **${equipoInfo.nombre}** recientemente. Debes esperar **${restante}h** antes de volver a intentarlo.`,
-      });
-    }
-
-    // ── 8. ¿Ya hay oferta pendiente?
-    if (db.ofertas_pendientes[jugador.id]) {
-      return interaction.editReply({
-        content: `⏳ **${jugador.displayName}** ya tiene una oferta pendiente. Espera a que la responda.`,
-      });
-    }
-
-    // ── 9. Mandar oferta al canal de fichajes
-    const canalFichajes = guild.channels.cache.get(CANAL_FICHAJES);
-    if (!canalFichajes) {
-      return interaction.editReply({ content: '❌ No se encontró el canal de fichajes. Contacta a un administrador.' });
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle('⚽ Oferta de Fichaje')
-      .setDescription(
-        `${jugador} has recibido una oferta del equipo **${equipoInfo.nombre}**.\n\n` +
-        `🕐 Tienes **10 minutos** para responder. Si no respondes, la oferta caduca.`
-      )
-      .addFields(
-        { name: '🧑‍💼 Director Técnico', value: `${reclutador}`, inline: true },
-        { name: '🏟️ Equipo',            value: `**${equipoInfo.nombre}**`, inline: true },
-        { name: '👥 Plantilla actual',  value: `${miembrosConRol.size}/${LIMITE_JUGADORES} jugadores`, inline: true },
-      )
-      .setThumbnail(equipoInfo.logo)
-      .setColor(0x1DB954)
-      .setTimestamp()
-      .setFooter({ text: 'Reacciona con los botones para aceptar o rechazar' });
-
-    const botones = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`fichar_aceptar_${jugador.id}_${equipoRol.id}_${reclutador.id}`)
-        .setLabel('✅ Aceptar')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`fichar_rechazar_${jugador.id}_${equipoRol.id}_${reclutador.id}`)
-        .setLabel('❌ Rechazar')
-        .setStyle(ButtonStyle.Danger),
-    );
-
-    const mensaje = await canalFichajes.send({
-      content: `${jugador}`,
-      embeds: [embed],
-      components: [botones],
-    });
-
-    // Guardar oferta pendiente
-    db.ofertas_pendientes[jugador.id] = {
-      mensajeId:    mensaje.id,
-      equipoRolId:  equipoRol.id,
-      reclutadorId: reclutador.id,
-      timestamp:    Date.now(),
-    };
-    guardarDB(db);
-
-    // Auto-expirar en 10 minutos
-    setTimeout(async () => {
-      const dbActual = leerDB();
-      if (dbActual.ofertas_pendientes[jugador.id]?.mensajeId === mensaje.id) {
-        delete dbActual.ofertas_pendientes[jugador.id];
-        guardarDB(dbActual);
-        try {
-          const botonesDesactivados = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('expirado_aceptar').setLabel('✅ Aceptar').setStyle(ButtonStyle.Success).setDisabled(true),
-            new ButtonBuilder()
-              .setCustomId('expirado_rechazar').setLabel('❌ Rechazar').setStyle(ButtonStyle.Danger).setDisabled(true),
-          );
-          await mensaje.edit({
-            embeds: [EmbedBuilder.from(embed).setColor(0x808080).setFooter({ text: '⌛ Oferta expirada — no se respondió a tiempo' })],
-            components: [botonesDesactivados],
-          });
-        } catch (_) {}
+      // Validar si el jugador existe en el caché o está en el servidor
+      if (!jugador) {
+        return interaction.editReply({ content: '❌ El jugador seleccionado no se encuentra en el servidor.' });
       }
-    }, 10 * 60 * 1000);
 
-    await interaction.editReply({
-      content: `✅ Oferta enviada a **${jugador.displayName}** en ${canalFichajes}. Tiene 10 minutos para responder.`,
-    });
+      // ── 1. El equipo pasado es válido?
+      const equipoInfo = EQUIPOS[equipoRol.id];
+      if (!equipoInfo) {
+        return interaction.editReply({ content: '❌ Ese rol no corresponde a un equipo oficial de la liga.' });
+      }
+
+      // ── 2. Reclutador tiene DT o SUB-DT?
+      const esDT    = reclutador.roles.cache.has(DT_ROLE_ID);
+      const esSubDT = reclutador.roles.cache.has(SUB_DT_ROLE_ID);
+      if (!esDT && !esSubDT) {
+        return interaction.editReply({ content: '❌ Solo el **Director Técnico** o el **Sub-Director Técnico** pueden fichar jugadores.' });
+      }
+
+      // ── 3. El reclutador pertenece al equipo que quiere fichar?
+      if (!reclutador.roles.cache.has(equipoRol.id)) {
+        return interaction.editReply({ content: `❌ No puedes fichar para **${equipoInfo.nombre}** porque no formas parte de ese equipo.` });
+      }
+
+      // ── 4. No puedes ficharte a ti mismo
+      if (jugador.id === reclutador.id) {
+        return interaction.editReply({ content: '❌ No puedes ficharte a ti mismo.' });
+      }
+
+      // ── 5. El jugador es un bot?
+      if (jugador.user.bot) {
+        return interaction.editReply({ content: '❌ No puedes fichar a un bot.' });
+      }
+
+      // ── 6. El jugador ya tiene equipo?
+      const tieneEquipo = Object.keys(EQUIPOS).some(id => jugador.roles.cache.has(id));
+      if (tieneEquipo) {
+        const equipoActualId = Object.keys(EQUIPOS).find(id => jugador.roles.cache.has(id));
+        const equipoActual = EQUIPOS[equipoActualId];
+        return interaction.editReply({
+          content: `❌ **${jugador.displayName}** ya pertenece a **${equipoActual ? equipoActual.nombre : 'un equipo'}**. Debe ser dado de baja primero.`,
+        });
+      }
+
+      // ── 7. Límite de 15 jugadores (optimizamos el conteo)
+      // Actualizamos los miembros del rol
+      const roleActualizado = await guild.roles.fetch(equipoRol.id).catch(() => null);
+      let totalJugadores = 0;
+      if (roleActualizado) {
+         totalJugadores = roleActualizado.members.size;
+      }
+      if (totalJugadores >= LIMITE_JUGADORES) {
+        return interaction.editReply({
+          content: `❌ **${equipoInfo.nombre}** ya alcanzó el límite de **${LIMITE_JUGADORES} jugadores** (Actualmente tienen ${totalJugadores}). No se permiten más fichajes.`,
+        });
+      }
+
+      // ── 8. Cooldown: ¿hay oferta rechazada reciente?
+      const db = leerDB();
+      const cooldownKey = `${jugador.id}-${equipoRol.id}`;
+      const cooldown = db.cooldowns[cooldownKey];
+      if (cooldown && Date.now() - cooldown < 24 * 60 * 60 * 1000) {
+        const restante = Math.ceil((24 * 60 * 60 * 1000 - (Date.now() - cooldown)) / 3600000);
+        return interaction.editReply({
+          content: `⏳ **${jugador.displayName}** rechazó una oferta de **${equipoInfo.nombre}** recientemente. Debes esperar **${restante}h** antes de volver a intentarlo.`,
+        });
+      }
+
+      // ── 9. ¿Ya hay oferta pendiente?
+      if (db.ofertas_pendientes[jugador.id]) {
+        return interaction.editReply({
+          content: `⏳ **${jugador.displayName}** ya tiene una oferta pendiente. Espera a que la responda o a que caduque.`,
+        });
+      }
+
+      // ── 10. Mandar oferta al canal de fichajes
+      const canalFichajes = guild.channels.cache.get(CANAL_FICHAJES);
+      if (!canalFichajes) {
+        return interaction.editReply({ content: '❌ No se encontró el canal de fichajes. Contacta a un administrador.' });
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle('⚽ Oferta de Fichaje')
+        .setDescription(
+          `${jugador} has recibido una oferta del equipo **${equipoInfo.nombre}**.\n\n` +
+          `🕐 Tienes **10 minutos** para responder. Si no respondes, la oferta caduca.`
+        )
+        .addFields(
+          { name: '🧑‍💼 Director Técnico', value: `${reclutador}`, inline: true },
+          { name: '🏟️ Equipo',            value: `**${equipoInfo.nombre}**`, inline: true },
+          { name: '👥 Plantilla actual',  value: `${totalJugadores}/${LIMITE_JUGADORES} jugadores`, inline: true },
+        )
+        .setThumbnail(equipoInfo.logo)
+        .setColor(0x1DB954)
+        .setTimestamp()
+        .setFooter({ text: 'Reacciona con los botones para aceptar o rechazar' });
+
+      const botones = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`fichar_aceptar_${jugador.id}_${equipoRol.id}_${reclutador.id}`)
+          .setLabel('✅ Aceptar')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`fichar_rechazar_${jugador.id}_${equipoRol.id}_${reclutador.id}`)
+          .setLabel('❌ Rechazar')
+          .setStyle(ButtonStyle.Danger),
+      );
+
+      const mensaje = await canalFichajes.send({
+        content: `${jugador}`,
+        embeds: [embed],
+        components: [botones],
+      }).catch(err => {
+        console.error('[FICHAR] Error al enviar mensaje de fichaje:', err);
+        return null;
+      });
+
+      if (!mensaje) {
+         return interaction.editReply({ content: '❌ Hubo un error al enviar la oferta al canal de fichajes. Revisa mis permisos.' });
+      }
+
+      // Guardar oferta pendiente
+      db.ofertas_pendientes[jugador.id] = {
+        mensajeId:    mensaje.id,
+        equipoRolId:  equipoRol.id,
+        reclutadorId: reclutador.id,
+        timestamp:    Date.now(),
+      };
+      guardarDB(db);
+
+      // Auto-expirar en 10 minutos
+      setTimeout(async () => {
+        const dbActual = leerDB();
+        if (dbActual.ofertas_pendientes[jugador.id]?.mensajeId === mensaje.id) {
+          delete dbActual.ofertas_pendientes[jugador.id];
+          guardarDB(dbActual);
+          try {
+            const botonesDesactivados = new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId('expirado_aceptar').setLabel('✅ Aceptar').setStyle(ButtonStyle.Success).setDisabled(true),
+              new ButtonBuilder()
+                .setCustomId('expirado_rechazar').setLabel('❌ Rechazar').setStyle(ButtonStyle.Danger).setDisabled(true),
+            );
+            
+            // Usamos un bloque try/catch para evitar errores si el mensaje fue borrado
+            const msgCache = await canalFichajes.messages.fetch(mensaje.id).catch(() => null);
+            if (msgCache) {
+               await msgCache.edit({
+                 embeds: [EmbedBuilder.from(embed).setColor(0x808080).setFooter({ text: '⌛ Oferta expirada — no se respondió a tiempo' })],
+                 components: [botonesDesactivados],
+               });
+            }
+          } catch (err) {
+            console.error('[FICHAR] Error al expirar mensaje:', err);
+          }
+        }
+      }, 10 * 60 * 1000);
+
+      await interaction.editReply({
+        content: `✅ Oferta enviada a **${jugador.displayName}** en ${canalFichajes}. Tiene 10 minutos para responder.`,
+      });
+
+    } catch (error) {
+      console.error('[FICHAR] Error en comando fichar:', error);
+      // Intentar avisar del error si no pudimos
+      try {
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply({ content: '❌ Ocurrió un error inesperado al procesar el fichaje.' });
+        } else {
+          await interaction.reply({ content: '❌ Ocurrió un error inesperado al procesar el fichaje.', ephemeral: true });
+        }
+      } catch (e) {
+        console.error('No se pudo enviar mensaje de error en fichar:', e);
+      }
+    }
   },
 
   // ─────────────────────────────────────────────
-  //  MANEJADORES DE BOTONES (exportados para interaction_create.js)
+  //  MANEJADORES DE BOTONES
   // ─────────────────────────────────────────────
   async handleAceptar(interaction) {
     try {
-      await interaction.deferUpdate();
-    } catch (err) {
-      console.error("Error al diferir la interacción (Aceptar):", err);
-      return;
-    }
+      // 1. Diferir la interacción SIEMPRE primero
+      await interaction.deferUpdate().catch(() => {});
 
-    const [, , jugadorId, equipoRolId, reclutadorId] = interaction.customId.split('_');
+      const [, , jugadorId, equipoRolId, reclutadorId] = interaction.customId.split('_');
 
-    // Solo el jugador al que va dirigida la oferta puede aceptar
-    if (interaction.user.id !== jugadorId) {
-      return interaction.followUp({ content: '❌ Esta oferta no es para ti.', flags: 64 });
-    }
+      // 2. Validar que el usuario que presiona es el jugador
+      if (interaction.user.id !== jugadorId) {
+        return interaction.followUp({ content: '❌ Esta oferta no es para ti.', ephemeral: true }).catch(() => {});
+      }
 
-    const guild      = interaction.guild;
-    const jugador    = await guild.members.fetch(jugadorId).catch(() => null);
-    const equipoInfo = EQUIPOS[equipoRolId];
+      const guild      = interaction.guild;
+      const jugador    = await guild.members.fetch(jugadorId).catch(() => null);
+      const equipoInfo = EQUIPOS[equipoRolId];
 
-    if (!jugador || !equipoInfo) {
-      return interaction.followUp({ content: '❌ No se pudo procesar la oferta.', flags: 64 });
-    }
+      if (!jugador || !equipoInfo) {
+        return interaction.followUp({ content: '❌ Ocurrió un error: No se encontró al jugador o el equipo en el sistema.', ephemeral: true }).catch(() => {});
+      }
 
-    // Verificar límite de nuevo por si acaso
-    const miembrosConRol = (await guild.members.fetch()).filter(m => m.roles.cache.has(equipoRolId));
-    if (miembrosConRol.size >= LIMITE_JUGADORES) {
+      // 3. Verificar límite de nuevo de forma rápida
+      const roleActualizado = await guild.roles.fetch(equipoRolId).catch(() => null);
+      let totalJugadores = roleActualizado ? roleActualizado.members.size : 0;
+      
       const db = leerDB();
+      
+      if (totalJugadores >= LIMITE_JUGADORES) {
+        delete db.ofertas_pendientes[jugadorId];
+        guardarDB(db);
+        return interaction.followUp({
+          content: `❌ El equipo **${equipoInfo.nombre}** ya llegó al límite de ${LIMITE_JUGADORES} jugadores. No se puede completar el fichaje.`,
+          ephemeral: true
+        }).catch(() => {});
+      }
+
+      // 4. Asignar el rol
+      try {
+        await jugador.roles.add(equipoRolId);
+      } catch (e) {
+        console.error('[FICHAR] Error al asignar rol:', e);
+        return interaction.followUp({ content: '❌ No pude asignar el rol al jugador. Verifica que el bot tenga permisos suficientes (rol del bot por encima de los equipos).', ephemeral: true }).catch(() => {});
+      }
+
+      // 5. Guardar en DB
+      db.jugadores[jugadorId] = {
+        equipoRolId,
+        equipoNombre: equipoInfo.nombre,
+        reclutadorId,
+        fechaFichaje: Date.now(),
+      };
       delete db.ofertas_pendientes[jugadorId];
       guardarDB(db);
-      return interaction.followUp({
-        content: `❌ El equipo **${equipoInfo.nombre}** ya llegó al límite de ${LIMITE_JUGADORES} jugadores. No se puede completar el fichaje.`,
-        
+
+      // 6. Actualizar embed de forma segura
+      const oldEmbed = interaction.message.embeds[0];
+      const embedAceptado = oldEmbed ? EmbedBuilder.from(oldEmbed) : new EmbedBuilder();
+      
+      embedAceptado
+        .setTitle('✅ Fichaje Completado')
+        .setColor(0x1DB954)
+        .setDescription(
+          `**${jugador.displayName}** ha **aceptado** la oferta de **${equipoInfo.nombre}** y ya es parte del plantel.\n\n` +
+          `⏱️ Fichado: ${tiempoRelativo(Date.now())}`
+        )
+        .setFooter({ text: `Fichado el ${new Date().toLocaleDateString('es-EC', { day:'2-digit', month:'long', year:'numeric' })}` });
+
+      const botonesDesactivados = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('done_aceptar').setLabel('✅ Aceptado').setStyle(ButtonStyle.Success).setDisabled(true),
+        new ButtonBuilder().setCustomId('done_rechazar').setLabel('❌ Rechazar').setStyle(ButtonStyle.Danger).setDisabled(true),
+      );
+
+      await interaction.message.edit({ embeds: [embedAceptado], components: [botonesDesactivados] }).catch(err => {
+         console.error('[FICHAR] Error al editar mensaje original al aceptar:', err);
       });
+
+    } catch (err) {
+      console.error("[FICHAR] Error fatal en handleAceptar:", err);
+      interaction.followUp({ content: '❌ Ocurrió un error inesperado al aceptar la oferta.', ephemeral: true }).catch(() => {});
     }
-
-    // Dar el rol
-    try {
-      await jugador.roles.add(equipoRolId);
-    } catch (e) {
-      return interaction.followUp({ content: '❌ No pude asignar el rol. Verifica mis permisos.', flags: 64 });
-    }
-
-    // Guardar en DB
-    const db = leerDB();
-    db.jugadores[jugadorId] = {
-      equipoRolId,
-      equipoNombre: equipoInfo.nombre,
-      reclutadorId,
-      fechaFichaje: Date.now(),
-    };
-    delete db.ofertas_pendientes[jugadorId];
-    guardarDB(db);
-
-    // Actualizar embed
-    const embedAceptado = EmbedBuilder.from(interaction.message.embeds[0])
-      .setTitle('✅ Fichaje Completado')
-      .setColor(0x1DB954)
-      .setDescription(
-        `**${jugador.displayName}** ha **aceptado** la oferta de **${equipoInfo.nombre}** y ya es parte del plantel.\n\n` +
-        `⏱️ Fichado: ${tiempoRelativo(db.jugadores[jugadorId].fechaFichaje)}`
-      )
-      .setFooter({ text: `Fichado el ${new Date().toLocaleDateString('es-EC', { day:'2-digit', month:'long', year:'numeric' })}` });
-
-    const botonesDesactivados = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('done_aceptar').setLabel('✅ Aceptado').setStyle(ButtonStyle.Success).setDisabled(true),
-      new ButtonBuilder().setCustomId('done_rechazar').setLabel('❌ Rechazar').setStyle(ButtonStyle.Danger).setDisabled(true),
-    );
-
-    await interaction.message.edit({ embeds: [embedAceptado], components: [botonesDesactivados] });
   },
 
   async handleRechazar(interaction) {
     try {
-      await interaction.deferUpdate();
+      // 1. Diferir la interacción SIEMPRE primero
+      await interaction.deferUpdate().catch(() => {});
+
+      const [, , jugadorId, equipoRolId, reclutadorId] = interaction.customId.split('_');
+
+      if (interaction.user.id !== jugadorId) {
+        return interaction.followUp({ content: '❌ Esta oferta no es para ti.', ephemeral: true }).catch(() => {});
+      }
+
+      const equipoInfo = EQUIPOS[equipoRolId];
+      const db = leerDB();
+
+      // 2. Poner cooldown de 24h
+      const cooldownKey = `${jugadorId}-${equipoRolId}`;
+      db.cooldowns[cooldownKey] = Date.now();
+      delete db.ofertas_pendientes[jugadorId];
+      guardarDB(db);
+
+      // 3. Actualizar el mensaje de forma segura
+      const oldEmbed = interaction.message.embeds[0];
+      const embedRechazado = oldEmbed ? EmbedBuilder.from(oldEmbed) : new EmbedBuilder();
+      
+      embedRechazado
+        .setTitle('❌ Oferta Rechazada')
+        .setColor(0xED4245)
+        .setDescription(
+          `**${interaction.user.displayName}** ha **rechazado** la oferta de **${equipoInfo?.nombre ?? 'equipo'}**.\n\n` +
+          `⏳ No se podrá enviar otra oferta a este jugador durante **24 horas**.`
+        )
+        .setFooter({ text: 'Cooldown activo por 24 horas' });
+
+      const botonesDesactivados = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('done_aceptar').setLabel('✅ Aceptar').setStyle(ButtonStyle.Success).setDisabled(true),
+        new ButtonBuilder().setCustomId('done_rechazar').setLabel('❌ Rechazado').setStyle(ButtonStyle.Danger).setDisabled(true),
+      );
+
+      await interaction.message.edit({ embeds: [embedRechazado], components: [botonesDesactivados] }).catch(err => {
+         console.error('[FICHAR] Error al editar mensaje original al rechazar:', err);
+      });
+
     } catch (err) {
-      console.error("Error al diferir la interacción (Rechazar):", err);
-      return;
+      console.error("[FICHAR] Error fatal en handleRechazar:", err);
+      interaction.followUp({ content: '❌ Ocurrió un error inesperado al rechazar la oferta.', ephemeral: true }).catch(() => {});
     }
-
-    const [, , jugadorId, equipoRolId, reclutadorId] = interaction.customId.split('_');
-
-    if (interaction.user.id !== jugadorId) {
-      return interaction.followUp({ content: '❌ Esta oferta no es para ti.', flags: 64 });
-    }
-
-    const equipoInfo = EQUIPOS[equipoRolId];
-    const db = leerDB();
-
-    // Poner cooldown de 24h
-    const cooldownKey = `${jugadorId}-${equipoRolId}`;
-    db.cooldowns[cooldownKey] = Date.now();
-    delete db.ofertas_pendientes[jugadorId];
-    guardarDB(db);
-
-    // Limpiar cooldown automáticamente después de 24h
-    setTimeout(() => {
-      const dbActual = leerDB();
-      delete dbActual.cooldowns[cooldownKey];
-      guardarDB(dbActual);
-    }, 24 * 60 * 60 * 1000);
-
-    const embedRechazado = EmbedBuilder.from(interaction.message.embeds[0])
-      .setTitle('❌ Oferta Rechazada')
-      .setColor(0xED4245)
-      .setDescription(
-        `**${interaction.user.displayName}** ha **rechazado** la oferta de **${equipoInfo?.nombre ?? 'equipo'}**.\n\n` +
-        `⏳ No se podrá enviar otra oferta a este jugador durante **24 horas**.`
-      )
-      .setFooter({ text: 'Cooldown activo por 24 horas' });
-
-    const botonesDesactivados = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('done_aceptar').setLabel('✅ Aceptar').setStyle(ButtonStyle.Success).setDisabled(true),
-      new ButtonBuilder().setCustomId('done_rechazar').setLabel('❌ Rechazado').setStyle(ButtonStyle.Danger).setDisabled(true),
-    );
-
-    await interaction.message.edit({ embeds: [embedRechazado], components: [botonesDesactivados] });
   },
 
   // Helper exportado para otros archivos
@@ -378,4 +431,4 @@ module.exports = {
   EQUIPOS,
   leerDB,
   guardarDB,
-};
+};
