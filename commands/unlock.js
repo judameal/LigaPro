@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { isAdmin, noPermReply } = require('./utils');
 const { COLORS } = require('../config');
+const { sendLog } = require('../utils/logger');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -26,5 +27,15 @@ module.exports = {
       .setFooter({ text: `Abierto por ${interaction.user.tag}` });
 
     await interaction.reply({ embeds: [embed] });
+
+    await sendLog(interaction.guild, {
+      title: 'Canal Abierto (Unlock)',
+      description: `El administrador **${interaction.user.tag}** abrió el canal ${channel}.`,
+      color: COLORS.SUCCESS,
+      fields: [
+        { name: '👤 Administrador', value: `${interaction.user}`, inline: true },
+        { name: '📺 Canal', value: `${channel}`, inline: true },
+      ]
+    });
   },
 };

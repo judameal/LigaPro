@@ -46,18 +46,25 @@ module.exports = {
       )
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
-
     // Notificar al usuario por DM
+    let dmEnviado = true;
     await target.send({
       embeds: [
         new EmbedBuilder()
           .setColor(COLORS.WARNING)
-          .setTitle('⚠️ Has sido sancionado')
-          .setDescription(`Fuiste sancionado en **${interaction.guild.name}** por **${horas} hora(s)**.\n\n**Razón:** ${razon}`)
+          .setTitle('⚠️ Has sido aislado')
+          .setDescription(`Has sido aislado por **${interaction.user.tag}** por **${horas} hora(s)** en el servidor **${interaction.guild.name}**.\n\nSi no estás conforme con la decisión que hemos tomado, por favor, comunícate con el administrador o el owner del servidor sacando un ticket con otra persona o comunicándote directamente con él. Gracias.`)
           .setTimestamp(),
       ],
-    }).catch(() => {}); // Si no acepta DMs, ignorar
+    }).catch(() => {
+      dmEnviado = false;
+    });
+
+    if (!dmEnviado) {
+      embed.setFooter({ text: '⚠️ El usuario tiene los DMs cerrados, no se le pudo notificar.' });
+    }
+
+    await interaction.reply({ embeds: [embed] });
 
     await sendLog(interaction.guild, {
       title: 'Usuario Sancionado (Aislado/Mute)',

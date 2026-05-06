@@ -24,15 +24,18 @@ module.exports = {
     if (isAdmin(target)) return interaction.reply({ content: '❌ No puedes banear a un administrador.', ephemeral: true });
 
     // Notificar antes de banear
+    let dmEnviado = true;
     await target.send({
       embeds: [
         new EmbedBuilder()
           .setColor(COLORS.ERROR)
           .setTitle('🔨 Has sido baneado')
-          .setDescription(`Fuiste baneado permanentemente de **${interaction.guild.name}**.\n\n**Razón:** ${razon}`)
+          .setDescription(`Has sido baneado por **${interaction.user.tag}**, por la razón: **${razon}**, en el servidor **${interaction.guild.name}**.\n\nSi deseas apelar la decisión, comunícate con los administradores o pide a alguien en el servidor que te ayude a apelar.`)
           .setTimestamp(),
       ],
-    }).catch(() => {});
+    }).catch(() => {
+      dmEnviado = false;
+    });
 
     try {
       await target.ban({ reason: razon, deleteMessageSeconds: 86400 });
@@ -49,6 +52,10 @@ module.exports = {
         { name: '🔨 Baneado por', value: `${interaction.user}`, inline: true },
       )
       .setTimestamp();
+
+    if (!dmEnviado) {
+      embed.setFooter({ text: '⚠️ El usuario tiene los DMs cerrados, no se le pudo notificar.' });
+    }
 
     await interaction.reply({ embeds: [embed] });
 

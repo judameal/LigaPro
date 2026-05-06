@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { isAdmin, noPermReply } = require('./utils');
 const { COLORS, ADMIN_ROLES } = require('../config');
+const { sendLog } = require('../utils/logger');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -38,5 +39,15 @@ module.exports = {
       .setFooter({ text: `Cerrado por ${interaction.user.tag}` });
 
     await interaction.reply({ embeds: [embed] });
+
+    await sendLog(interaction.guild, {
+      title: 'Canal Cerrado (Lock)',
+      description: `El administrador **${interaction.user.tag}** cerró el canal ${channel}.`,
+      color: COLORS.ERROR,
+      fields: [
+        { name: '👤 Administrador', value: `${interaction.user}`, inline: true },
+        { name: '📺 Canal', value: `${channel}`, inline: true },
+      ]
+    });
   },
 };
