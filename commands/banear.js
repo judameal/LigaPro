@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { isAdmin, noPermReply } = require('./utils');
 const { COLORS } = require('../config');
+const { sendLog } = require('../utils/logger');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -50,5 +51,16 @@ module.exports = {
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
+
+    await sendLog(interaction.guild, {
+      title: 'Usuario Baneado',
+      description: `El administrador **${interaction.user.tag}** ha baneado a **${target.user.tag}**.`,
+      color: COLORS.LOG_BAN,
+      fields: [
+        { name: '👤 Baneado', value: `${target.user}`, inline: true },
+        { name: '🔨 Por', value: `${interaction.user}`, inline: true },
+        { name: '📝 Razón', value: razon, inline: false },
+      ]
+    });
   },
 };

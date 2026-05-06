@@ -5,6 +5,9 @@ const {
 
 // Importamos helpers desde fichar.js para no duplicar config
 const { EQUIPOS, leerDB, guardarDB, tiempoRelativo } = require('./fichar');
+const { sendLog } = require('../utils/logger');
+const { COLORS } = require('../config');
+
 
 const DT_ROLE_ID     = '1497693671141671034';
 const SUB_DT_ROLE_ID = '1497693705539424467';
@@ -101,6 +104,19 @@ module.exports = {
 
     await interaction.editReply({
       content: `✅ **${objetivo.displayName}** ha sido dado de baja de **${equipoInfo.nombre}** correctamente.`,
+    });
+
+    // Enviar log
+    await sendLog(guild, {
+      title: 'Baja de Jugador / Rol Removido',
+      description: `Se removió el rol **${equipoInfo.nombre}** del usuario ${objetivo}.`,
+      color: COLORS.ERROR,
+      fields: [
+        { name: '👤 Jugador', value: `${objetivo}`, inline: true },
+        { name: '🏟️ Equipo', value: `**${equipoInfo.nombre}**`, inline: true },
+        { name: '🧑‍💼 Autorizado por', value: `${reclutador}`, inline: true },
+      ],
+      thumbnail: equipoInfo.logo
     });
   },
 };

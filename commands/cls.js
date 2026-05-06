@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { isAdmin, noPermReply } = require('./utils');
 const { COLORS } = require('../config');
+const { sendLog } = require('../utils/logger');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -34,7 +35,19 @@ module.exports = {
       .setDescription(`Se han borrado **${deleted.size}** mensaje(s) correctamente.`)
       .setTimestamp();
 
-    const reply = await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
+
+    // Enviar log
+    await sendLog(interaction.guild, {
+      title: 'Limpieza de Mensajes',
+      description: `El administrador **${interaction.user.tag}** usó el sistema de limpieza.`,
+      color: COLORS.LOG_CLEAR,
+      fields: [
+        { name: '👤 Administrador', value: `${interaction.user}`, inline: true },
+        { name: '📺 Canal', value: `${interaction.channel}`, inline: true },
+        { name: '🗑️ Cantidad', value: `${deleted.size} mensajes borrados`, inline: true },
+      ]
+    });
 
     // El mensaje desaparece después de 4 segundos
     setTimeout(async () => {

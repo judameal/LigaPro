@@ -8,6 +8,9 @@ const {
 } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
+const { sendLog } = require('../utils/logger');
+const { COLORS } = require('../config');
+
 
 // ─────────────────────────────────────────────
 //  CONFIGURACIÓN
@@ -202,7 +205,7 @@ module.exports = {
         .setTitle('⚽ Oferta de Fichaje')
         .setDescription(
           `${jugador} has recibido una oferta del equipo **${equipoInfo.nombre}**.\n\n` +
-          `🕐 Tienes **10 minutos** para responder. Si no respondes, la oferta caduca.`
+          `🕐 Tienes **1 hora** para responder. Si no respondes, la oferta caduca.`
         )
         .addFields(
           { name: '🧑‍💼 Director Técnico', value: `${reclutador}`, inline: true },
@@ -247,7 +250,7 @@ module.exports = {
       };
       guardarDB(db);
 
-      // Auto-expirar en 10 minutos
+      // Auto-expirar en 1 hora (3600000 ms)
       setTimeout(async () => {
         const dbActual = leerDB();
         if (dbActual.ofertas_pendientes[jugador.id]?.mensajeId === mensaje.id) {
@@ -261,11 +264,15 @@ module.exports = {
                 .setCustomId('expirado_rechazar').setLabel('❌ Rechazar').setStyle(ButtonStyle.Danger).setDisabled(true),
             );
             
-            // Usamos un bloque try/catch para evitar errores si el mensaje fue borrado
             const msgCache = await canalFichajes.messages.fetch(mensaje.id).catch(() => null);
             if (msgCache) {
+               const expiredEmbed = EmbedBuilder.from(embed)
+                 .setColor(0x808080)
+                 .setDescription(`${jugador} la oferta del equipo **${equipoInfo.nombre}** ha expirado.\n\n⏰ Este fichaje ha expirado por inactividad.`)
+                 .setFooter({ text: '⌛ Oferta expirada — no se respondió a tiempo' });
+               
                await msgCache.edit({
-                 embeds: [EmbedBuilder.from(embed).setColor(0x808080).setFooter({ text: '⌛ Oferta expirada — no se respondió a tiempo' })],
+                 embeds: [expiredEmbed],
                  components: [botonesDesactivados],
                });
             }
@@ -273,10 +280,10 @@ module.exports = {
             console.error('[FICHAR] Error al expirar mensaje:', err);
           }
         }
-      }, 10 * 60 * 1000);
+      }, 60 * 60 * 1000);
 
       await interaction.editReply({
-        content: `✅ Oferta enviada a **${jugador.displayName}** en ${canalFichajes}. Tiene 10 minutos para responder.`,
+        content: `✅ Oferta enviada a **${jugador.displayName}** en ${canalFichajes}. Tiene 1 hora para responder.`,
       });
 
     } catch (error) {
@@ -323,6 +330,11 @@ module.exports = {
       
       const db = leerDB();
       
+      // Verificar si la oferta sigue pendiente
+      if (!db.ofertas_pendientes[jugadorId] || db.ofertas_pendientes[jugadorId].mensajeId !== interaction.message.id) {
+        return interaction.followUp({ content: '❌ Esta oferta ya ha expirado o ya fue respondida.', ephemeral: true }).catch(() => {});
+      }
+
       if (totalJugadores >= LIMITE_JUGADORES) {
         delete db.ofertas_pendientes[jugadorId];
         guardarDB(db);
@@ -372,6 +384,19 @@ module.exports = {
          console.error('[FICHAR] Error al editar mensaje original al aceptar:', err);
       });
 
+      // Log accepted transfer
+      await sendLog(guild, {
+        title: 'Fichaje Aceptado',
+        description: `Mediante el sistema de fichajes se otorgó el rol **${equipoInfo.nombre}** al usuario ${jugador}.`,
+        color: COLORS.LOG_FICHAJE,
+        fields: [
+          { name: '👤 Jugador', value: `${jugador}`, inline: true },
+          { name: '🏟️ Equipo', value: `**${equipoInfo.nombre}**`, inline: true },
+          { name: '🧑‍💼 Fichado por', value: `<@${reclutadorId}>`, inline: true },
+        ],
+        thumbnail: equipoInfo.logo
+      });
+
     } catch (err) {
       console.error("[FICHAR] Error fatal en handleAceptar:", err);
       interaction.followUp({ content: '❌ Ocurrió un error inesperado al aceptar la oferta.', ephemeral: true }).catch(() => {});
@@ -391,6 +416,11 @@ module.exports = {
 
       const equipoInfo = EQUIPOS[equipoRolId];
       const db = leerDB();
+
+      // Verificar si la oferta sigue pendiente
+      if (!db.ofertas_pendientes[jugadorId] || db.ofertas_pendientes[jugadorId].mensajeId !== interaction.message.id) {
+        return interaction.followUp({ content: '❌ Esta oferta ya ha expirado o ya fue respondida.', ephemeral: true }).catch(() => {});
+      }
 
       // 2. Poner cooldown de 24h
       const cooldownKey = `${jugadorId}-${equipoRolId}`;
@@ -418,6 +448,18 @@ module.exports = {
 
       await interaction.message.edit({ embeds: [embedRechazado], components: [botonesDesactivados] }).catch(err => {
          console.error('[FICHAR] Error al editar mensaje original al rechazar:', err);
+      });
+
+      // Log rejected transfer
+      await sendLog(interaction.guild, {
+        title: 'Fichaje Rechazado',
+        description: `El usuario <@${jugadorId}> ha rechazado el fichaje del equipo **${equipoInfo?.nombre ?? 'Desconocido'}**.`,
+        color: COLORS.ERROR,
+        fields: [
+          { name: '👤 Jugador', value: `<@${jugadorId}>`, inline: true },
+          { name: '🏟️ Equipo', value: `**${equipoInfo?.nombre ?? 'Desconocido'}**`, inline: true },
+          { name: '🧑‍💼 Ofertado por', value: `<@${reclutadorId}>`, inline: true },
+        ]
       });
 
     } catch (err) {

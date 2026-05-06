@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { isAdmin, noPermReply } = require('./utils');
 const { COLORS } = require('../config');
+const { sendLog } = require('../utils/logger');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -57,5 +58,17 @@ module.exports = {
           .setTimestamp(),
       ],
     }).catch(() => {}); // Si no acepta DMs, ignorar
+
+    await sendLog(interaction.guild, {
+      title: 'Usuario Sancionado (Aislado/Mute)',
+      description: `El administrador **${interaction.user.tag}** ha sancionado a **${target.user.tag}**.`,
+      color: COLORS.LOG_MUTE,
+      fields: [
+        { name: '👤 Sancionado', value: `${target.user}`, inline: true },
+        { name: '🔨 Por', value: `${interaction.user}`, inline: true },
+        { name: '⏱️ Duración', value: `${horas} hora(s)`, inline: true },
+        { name: '📝 Razón', value: razon, inline: false },
+      ]
+    });
   },
 };

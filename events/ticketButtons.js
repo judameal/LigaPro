@@ -1,5 +1,7 @@
 const { EmbedBuilder, PermissionFlagsBits, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { ADMIN_ROLES, COLORS } = require('../config');
+const { sendLog } = require('../utils/logger');
+
 
 // Datos en memoria (no depende del sistema de archivos de Railway)
 if (!global.ticketData) global.ticketData = { counter: 0, tickets: {} };
@@ -100,6 +102,18 @@ module.exports = {
     await ticketChannel.send({ content: `${adminMentions} | ${member}`, embeds: [embed], components: [row] });
     await interaction.editReply({ content: `✅ Tu ticket ha sido creado: ${ticketChannel}` });
 
+    // Log ticket creation
+    await sendLog(guild, {
+      title: 'Ticket Abierto',
+      description: `El usuario **${member.user.tag}** ha abierto un ticket.`,
+      color: COLORS.LOG_TICKET,
+      fields: [
+        { name: '👤 Usuario', value: `${member}`, inline: true },
+        { name: '📂 Tipo', value: ticketTypes[customId], inline: true },
+        { name: '📺 Canal', value: `${ticketChannel.name}`, inline: true },
+      ]
+    });
+
     const collector = ticketChannel.createMessageComponentCollector({
       filter: i => i.customId === `close_ticket_${ticketNumber}`,
     });
@@ -118,6 +132,18 @@ module.exports = {
         .setDescription(`Cerrado por ${btnInteraction.member}. El canal se eliminará en 5 segundos.`);
 
       await btnInteraction.reply({ embeds: [closeEmbed] });
+
+      // Log ticket closing/deletion
+      await sendLog(guild, {
+        title: 'Ticket Cerrado y Eliminado',
+        description: `El ticket **${channelName}** ha sido cerrado.`,
+        color: COLORS.LOG_TICKET,
+        fields: [
+          { name: '🔒 Cerrado por', value: `${btnInteraction.member}`, inline: true },
+          { name: '📂 Tipo', value: ticketTypes[customId], inline: true },
+        ]
+      });
+
       setTimeout(() => ticketChannel.delete().catch(() => {}), 5000);
     });
   },

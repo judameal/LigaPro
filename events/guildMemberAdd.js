@@ -1,6 +1,7 @@
 // events/guildMemberAdd.js
 const { EmbedBuilder } = require('discord.js');
 const { WELCOME_CHANNEL_ID, COLORS } = require('../config');
+const { sendLog } = require('../utils/logger');
 
 module.exports = {
   name: 'guildMemberAdd',
@@ -24,5 +25,16 @@ module.exports = {
       .setTimestamp();
 
     channel.send({ content: `✨ ¡Bienvenido ${member}!`, embeds: [embed] });
+
+    await sendLog(member.guild, {
+      title: 'Nuevo Miembro',
+      description: `He dado la bienvenida a **${member.user.tag}**.`,
+      color: COLORS.WELCOME,
+      fields: [
+        { name: '👤 Usuario', value: `${member}`, inline: true },
+        { name: 'ID', value: member.id, inline: true },
+      ],
+      thumbnail: member.user.displayAvatarURL({ dynamic: true })
+    });
   },
 };

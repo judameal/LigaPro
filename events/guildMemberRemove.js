@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { GOODBYE_CHANNEL_ID, COLORS } = require('../config');
+const { sendLog } = require('../utils/logger');
 
 module.exports = {
   name: 'guildMemberRemove',
@@ -22,5 +23,16 @@ module.exports = {
       .setTimestamp();
 
     channel.send({ embeds: [embed] });
+
+    await sendLog(member.guild, {
+      title: 'Miembro Abandonó',
+      description: `El usuario **${member.user.tag}** abandonó el servidor.`,
+      color: COLORS.GOODBYE,
+      fields: [
+        { name: '👤 Usuario', value: `${member.user.tag}`, inline: true },
+        { name: 'ID', value: member.id, inline: true },
+      ],
+      thumbnail: member.user.displayAvatarURL({ dynamic: true })
+    });
   },
 };
