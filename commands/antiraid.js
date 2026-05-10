@@ -15,6 +15,9 @@ const {
   activateLockdown, deactivateLockdown,
   THRESHOLDS,
 } = require('../utils/antiraid');
+const {
+  getWarnCount, getAllWarns, resetWarns, getSanctionInfo,
+} = require('../utils/warnManager');
 const config = require('../config');
 
 module.exports = {
@@ -50,6 +53,20 @@ module.exports = {
                 { name: '🟡 Normal (configuración por defecto)', value: 'normal' },
                 { name: '🔴 Alta (máxima protección)', value: 'alta' },
               )
+         )
+    )
+    .addSubcommand(sub =>
+      sub.setName('warns')
+         .setDescription('📋 Ver advertencias de un usuario')
+         .addUserOption(opt =>
+           opt.setName('usuario').setDescription('Usuario a consultar').setRequired(true)
+         )
+    )
+    .addSubcommand(sub =>
+      sub.setName('resetwarns')
+         .setDescription('🗑️ Resetear advertencias de un usuario')
+         .addUserOption(opt =>
+           opt.setName('usuario').setDescription('Usuario a limpiar').setRequired(true)
          )
     ),
 
@@ -232,6 +249,59 @@ module.exports = {
           .setColor(AR_COLORS.INFO)
           .setTitle(`🎚️ Sensibilidad ajustada a ${nivelLabel}`)
           .setDescription(`El VAR de Seguridad ahora opera en modo **${nivelLabel}**.\nTodos los umbrales de detección han sido actualizados.`)
+          .setTimestamp()
+        ],
+        ephemeral: true,
+      });
+    }
+    // ══════════════════════════════════════════════════
+    //  SUBCOMANDO: WARNS
+    // ══════════════════════════════════════════════════
+    if (sub === 'warns') {
+      const target = interaction.options.getUser('usuario');
+      const count  = getWarnCount(target.id);
+      const next   = getSanctionInfo(count + 1);
+
+      const embed = new EmbedBuilder()
+        .setColor(count === 0 ? AR_COLORS.SAFE : count >= 6 ? AR_COLORS.RAID_ALERT : AR_COLORS.WARNING)
+        .setTitle(`📋 Advertencias de ${target.tag}`)
+        .setThumbnail(target.displayAvatarURL({ dynamic: true }))
+        .addFields(
+          { name: '⚠️ Total advertencias',    value: `**${count}**`, inline: true },
+          { name: '⏭️ Próxima sanción',        value: count === 0 ? '🟢 Sin infracciones' : next.label, inline: true },
+        )
+        .setFooter({ text: '🛡️ Comisión Disciplinaria | LigaPro Ecuabet x4' })
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    // ══════════════════════════════════════════════════
+    //  SUBCOMANDO: RESETWARNS
+    // ══════════════════════════════════════════════════
+    if (sub === 'resetwarns') {
+      const target = interaction.options.getUser('usuario');
+      const oldCount = getWarnCount(target.id);
+      resetWarns(target.id);
+
+      await sendLog(guild, {
+        title: '🗑️ Advertencias Reseteadas',
+        description:
+          `Admin **${interaction.user.tag}** limpió las advertencias de **${target.tag}**.`,
+        color: AR_COLORS.SAFE,
+        fields: [
+          { name: '👤 Usuario',           value: `${target}`, inline: true },
+          { name: '🆔 ID',                value: target.id, inline: true },
+          { name: '⚠️ Adv. eliminadas',   value: `${oldCount}`, inline: true },
+          { name: '👮 Admin',             value: `${interaction.user}`, inline: true },
+        ]
+      });
+
+      return interaction.reply({
+        embeds: [new EmbedBuilder()
+          .setColor(AR_COLORS.SAFE)
+          .setTitle('🗑️ Advertencias eliminadas')
+          .setDescription(`Las **${oldCount}** advertencias de **${target.tag}** han sido eliminadas.`)
           .setTimestamp()
         ],
         ephemeral: true,

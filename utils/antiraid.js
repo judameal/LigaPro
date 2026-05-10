@@ -66,9 +66,9 @@ const THRESHOLDS = {
   // Botones / interacciones
   BTN_SPAM_COUNT:    10,
   BTN_SPAM_WINDOW:   5_000,
-  // Links externos
-  LINK_COUNT:        3,
-  LINK_WINDOW:       10_000,
+  // Links externos — se necesitan MÁS DE 3 (4ª vez = infracción)
+  LINK_COUNT:        4,           // se activa en la 4ª detección (>3)
+  LINK_WINDOW:       2 * 60_000,  // ventana de 2 minutos
   // Menciones masivas
   MENTION_COUNT:     5,
   MENTION_WINDOW:    5_000,
@@ -132,6 +132,15 @@ function track(tracker, key, window, maxStore = 50) {
     if (oldest) tracker.delete(oldest[0]);
   }
   return entry.count;
+}
+
+/**
+ * Resetea el contador de un tracker para un usuario (tras emitir sanción)
+ * @param {Map} tracker
+ * @param {string} key
+ */
+function resetTracker(tracker, key) {
+  tracker.delete(key);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -317,6 +326,7 @@ module.exports = {
   LINK_REGEX,
   isWhitelisted,
   track,
+  resetTracker,
   activateLockdown,
   deactivateLockdown,
   autoban,

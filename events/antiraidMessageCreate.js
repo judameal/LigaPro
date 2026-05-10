@@ -3,39 +3,180 @@
  * ║   🔍 ANTIRAID — Detector de Mensajes | LigaPro Ecuabet x4  ║
  * ║   VAR Digital: Anti-Spam · Anti-Links · Anti-Menciones      ║
  * ╚══════════════════════════════════════════════════════════════╝
+ *
+ * REGLAS DE LINKS:
+ *  - GIFs (tenor, giphy, .gif) → PERMITIDOS, no se cuentan ni eliminan
+ *  - Links normales 1–3 veces  → Eliminados en silencio, sin advertencia
+ *  - Links 4ª vez (>3)         → SE CONSIDERA INFRACCIÓN → advertencia progresiva
+ *
+ * ESCALA DE SANCIONES:
+ *  Adv. 1 → Aislamiento 2h (timeout: sin hablar, reaccionar ni usar hilos)
+ *  Adv. 2 → Ban temporal 4h
+ *  Adv. 3 → Ban temporal 12h
+ *  Adv. 4 → Expulsión (kick)
+ *  Adv. 5 → Expulsión (kick)
+ *  Adv. 6 → Expulsión (kick)
+ *  Adv. 7+→ Ban permanente
  */
 
+const { EmbedBuilder } = require('discord.js');
 const {
-  isWhitelisted, track, raidLog, autotimeout, autokick,
+  isWhitelisted, track, raidLog, autotimeout, autokick, autoban,
   spamTracker, linkTracker, mentionTracker,
-  THRESHOLDS, AR_COLORS, LINK_REGEX, activateLockdown, raidState,
+  THRESHOLDS, AR_COLORS, LINK_REGEX, activateLockdown,
 } = require('../utils/antiraid');
+const {
+  addWarn, getSanctionInfo, addTempBan,
+} = require('../utils/warnManager');
 
+// ── GIFs PERMITIDOS (nunca se eliminan ni cuentan) ──────────────
+// Cubre: tenor, giphy, URLs terminadas en .gif y .gifv
+const GIF_REGEX = /^https?:\/\/(www\.)?(tenor\.com|giphy\.com|media\.tenor\.com|c\.tenor\.com|i\.giphy\.com|media\d?\.giphy\.com|media\.discordapp\.net\/[^\s]+\.gif)/i;
+const ENDS_GIF   = /\.(gif|gifv)(\?[^\s]*)?$/i;
 
+/**
+ * Devuelve true si el contenido del mensaje SOLO contiene links de GIFs
+ * (o texto sin links prohibidos)
+ */
+function isGifOnly(content) {
+  // Extraemos todos los URLs del mensaje
+  const urlRegex = /https?:\/\/[^\s]+/gi;
+  const urls = content.match(urlRegex);
+  if (!urls) return false; // no hay URLs → no aplica
+  // Si TODOS los URLs son GIFs → permitido
+  return urls.every(url => GIF_REGEX.test(url) || ENDS_GIF.test(url));
+}
+
+/**
+ * Aplica la sanción progresiva por links al miembro
+ * @param {import('discord.js').GuildMember} member
+ * @param {import('discord.js').Guild} guild
+ * @param {number} warnCount  número de advertencia actual (ya sumado)
+ */
+async function applySanction(member, guild, warnCount) {
+  const info = getSanctionInfo(warnCount);
+
+  switch (info.type) {
+
+    // ── Adv 1: Aislamiento completo 2h (Discord timeout) ───────
+    case 'TIMEOUT': {
+      // El timeout de Discord bloquea: mensajes, reacciones, hilos, todo
+      await autotimeout(member,
+        `Infracción por links (advertencia ${warnCount}) — Aislamiento 2h`,
+        info.durationMs
+      );
+
+      // Notificar al usuario por DM
+      await member.send({ embeds: [new EmbedBuilder()
+        .setColor(AR_COLORS.WARNING)
+        .setTitle('⏸️ AISLAMIENTO TEMPORAL — LigaPro Security')
+        .setDescription(
+          `Has sido **aislado** del estadio virtual de **LigaPro Ecuabet x4** durante **2 horas**.\n\n` +
+          `Durante este tiempo **no podrás**:\n` +
+          `> ❌ Enviar mensajes\n` +
+          `> ❌ Reaccionar\n` +
+          `> ❌ Crear o unirte a hilos\n\n` +
+          `**Razón:** Publicación reiterada de links no autorizados.\n` +
+          `Esta es tu **advertencia #${warnCount}**. Nuevas infracciones tendrán consecuencias mayores.`
+        )
+        .setFooter({ text: '🛡️ Comisión Disciplinaria | LigaPro Ecuabet x4' })
+        .setTimestamp()
+      ]}).catch(() => {});
+      break;
+    }
+
+    // ── Adv 2-3: Ban temporal (4h / 12h) ───────────────────────
+    case 'TEMPBAN': {
+      const horas = info.durationMs / (60 * 60 * 1000);
+      const unbanAt = Date.now() + info.durationMs;
+
+      await member.send({ embeds: [new EmbedBuilder()
+        .setColor(AR_COLORS.BAN)
+        .setTitle(`🟨 BAN TEMPORAL ${horas}H — LigaPro Security`)
+        .setDescription(
+          `Has sido **baneado temporalmente** por **${horas} horas** del estadio virtual de **LigaPro Ecuabet x4**.\n\n` +
+          `**Razón:** Publicación reiterada de links no autorizados.\n` +
+          `Esta es tu **advertencia #${warnCount}**. Nuevas infracciones conllevarán expulsión o ban permanente.`
+        )
+        .addFields(
+          { name: '⏰ Regreso', value: `<t:${Math.floor(unbanAt / 1000)}:R>`, inline: true }
+        )
+        .setFooter({ text: '🛡️ Comisión Disciplinaria | LigaPro Ecuabet x4' })
+        .setTimestamp()
+      ]}).catch(() => {});
+
+      // Guardar temp ban ANTES de banear (para que el scheduler lo recupere)
+      addTempBan(member.id, guild.id, info.durationMs);
+      await member.ban({
+        reason: `🟨 AntiRaid [Adv. ${warnCount}]: Links reiterados — Ban temporal ${horas}h`,
+        deleteMessageSeconds: 0,
+      });
+      break;
+    }
+
+    // ── Adv 4-6: Expulsión (kick) ───────────────────────────────
+    case 'KICK': {
+      await member.send({ embeds: [new EmbedBuilder()
+        .setColor(AR_COLORS.BAN)
+        .setTitle('🟥 EXPULSIÓN DEL ESTADIO — LigaPro Security')
+        .setDescription(
+          `Has sido **expulsado** del estadio virtual de **LigaPro Ecuabet x4**.\n\n` +
+          `**Razón:** Comportamiento reiterativo con links no autorizados.\n` +
+          `Esta es tu **advertencia #${warnCount}**. La próxima resultará en ban permanente.`
+        )
+        .setFooter({ text: '🛡️ Comisión Disciplinaria | LigaPro Ecuabet x4' })
+        .setTimestamp()
+      ]}).catch(() => {});
+
+      await autokick(member, `Infracción por links (advertencia ${warnCount})`);
+      break;
+    }
+
+    // ── Adv 7+: Ban permanente ──────────────────────────────────
+    case 'PERMBAN': {
+      await member.send({ embeds: [new EmbedBuilder()
+        .setColor(AR_COLORS.RAID_ALERT)
+        .setTitle('🚫 BAN PERMANENTE — LigaPro Security')
+        .setDescription(
+          `Has sido **baneado permanentemente** del estadio virtual de **LigaPro Ecuabet x4**.\n\n` +
+          `**Razón:** Comportamiento malicioso reiterativo (links no autorizados).\n` +
+          `Advertencia #${warnCount} alcanzada. No hay vuelta atrás.`
+        )
+        .setFooter({ text: '🚫 Comisión Disciplinaria Permanente | LigaPro Ecuabet x4' })
+        .setTimestamp()
+      ]}).catch(() => {});
+
+      await autoban(member, `Infracción reiterada por links (advertencia ${warnCount})`);
+      break;
+    }
+  }
+
+  return info;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  EVENTO
+// ═══════════════════════════════════════════════════════════════
 
 module.exports = {
   name: 'messageCreate',
 
   async execute(message, client) {
-    // ── Ignorar bots / DMs / mensajes del sistema ──────────────
+    // ── Ignorar bots / DMs / sistema ──────────────────────────
     if (message.author.bot || !message.guild || message.system) return;
 
     const member = message.member;
     const guild  = message.guild;
 
-    // ── Whitelist: admins no son castigados ────────────────────
     if (isWhitelisted(member, guild)) return;
 
     // ══════════════════════════════════════════════════
-    //  1. DETECCIÓN DE SPAM DE MENSAJES
+    //  1. SPAM DE MENSAJES
     // ══════════════════════════════════════════════════
     const spamCount = track(spamTracker, message.author.id, THRESHOLDS.SPAM_MSG_WINDOW);
 
     if (spamCount >= THRESHOLDS.SPAM_MSG_COUNT) {
-      // Eliminar el mensaje infractor
       await message.delete().catch(() => {});
-
-      // Aplicar timeout (10 min)
       await autotimeout(member, 'Spam masivo de mensajes detectado', 10 * 60 * 1000);
 
       await raidLog(guild, {
@@ -43,76 +184,85 @@ module.exports = {
         description:
           `🚨 **VAR DE SEGURIDAD:** Se detectó spam sospechoso en el estadio.\n\n` +
           `**${message.author.tag}** ha superado el límite de mensajes en poco tiempo.\n` +
-          `⚠️ **COMISIÓN DISCIPLINARIA:** Se ha aplicado silencio temporal de 10 minutos.`,
+          `⚠️ **COMISIÓN DISCIPLINARIA:** Silencio temporal de 10 minutos aplicado.`,
         color: AR_COLORS.WARNING,
         userId: message.author.id,
         fields: [
-          { name: '📨 Mensajes detectados', value: `${spamCount} en 5 segundos`, inline: true },
-          { name: '👤 Usuario', value: `${message.author.tag}`, inline: true },
-          { name: '📍 Canal', value: `${message.channel}`, inline: true },
-          { name: '🕐 Sanción', value: 'Timeout 10 minutos', inline: true },
+          { name: '📨 Mensajes', value: `${spamCount} en ${THRESHOLDS.SPAM_MSG_WINDOW / 1000}s`, inline: true },
+          { name: '👤 Usuario',  value: message.author.tag, inline: true },
+          { name: '📍 Canal',    value: `${message.channel}`, inline: true },
+          { name: '🕐 Sanción',  value: 'Timeout 10 minutos', inline: true },
         ]
       });
 
-      // Si el spam es extremo, elevar alerta
       if (spamCount >= THRESHOLDS.SPAM_MSG_COUNT * 3) {
-        await activateLockdown(guild, `Spam extremo por usuario ${message.author.tag}`);
+        await activateLockdown(guild, `Spam extremo por ${message.author.tag}`);
       }
       return;
     }
 
     // ══════════════════════════════════════════════════
-    //  2. DETECCIÓN DE LINKS EXTERNOS
+    //  2. LINKS EXTERNOS — SISTEMA PROGRESIVO
     // ══════════════════════════════════════════════════
     if (LINK_REGEX.test(message.content)) {
-      const linkCount = track(linkTracker, message.author.id, THRESHOLDS.LINK_WINDOW);
 
-      // Eliminar mensaje con link
+      // ── GIFs PERMITIDOS: no se tocan, se ignoran completamente ──
+      if (isGifOnly(message.content)) return;
+
+      // Eliminar el mensaje con link (siempre, sin importar el conteo)
       await message.delete().catch(() => {});
 
-      if (linkCount >= THRESHOLDS.LINK_COUNT) {
-        // Reincidente → kick
-        await autokick(member, 'Publicación masiva de links externos no autorizados');
+      // Contar links en ventana de 2 minutos
+      // LINK_COUNT = 4 (>3 = infracción), LINK_WINDOW = 2 min
+      const linkCount = track(linkTracker, message.author.id, THRESHOLDS.LINK_WINDOW);
 
+      // Si aún no supera el umbral → silencio, solo log discreto
+      if (linkCount < THRESHOLDS.LINK_COUNT) {
         await raidLog(guild, {
-          title: 'LINK EXTERNO BLOQUEADO — EXPULSIÓN',
+          title: 'LINK SILENCIADO',
           description:
-            `⚠️ **COMISIÓN DISCIPLINARIA:** Los links externos no están permitidos en el estadio.\n\n` +
-            `**${message.author.tag}** fue reincidente (${linkCount} links) y ha sido expulsado.\n` +
-            `🟨 **TARJETA ROJA POR REINCIDENCIA.**`,
-          color: AR_COLORS.BAN,
-          userId: message.author.id,
-          fields: [
-            { name: '🔗 Links detectados', value: `${linkCount}`, inline: true },
-            { name: '👤 Usuario', value: message.author.tag, inline: true },
-            { name: '🕐 Sanción', value: 'Expulsión del servidor', inline: true },
-          ]
-        });
-      } else {
-        // ── Link eliminado en silencio → log privado al canal de logs ──
-        await raidLog(guild, {
-          title: 'LINK EXTERNO ELIMINADO',
-          description:
-            `⚠️ **COMISIÓN DISCIPLINARIA:** Link externo detectado y eliminado.\n` +
+            `🔇 Link eliminado sin sanción (${linkCount}/${THRESHOLDS.LINK_COUNT - 1} permitidos antes de advertencia).\n` +
             `**${message.author.tag}** intentó publicar un enlace no autorizado.`,
           color: AR_COLORS.SUSPICIOUS,
           userId: message.author.id,
           fields: [
-            { name: '📍 Canal', value: `${message.channel}`, inline: true },
-            { name: '⚠️ Advertencias', value: `${linkCount}/${THRESHOLDS.LINK_COUNT}`, inline: true },
+            { name: '📍 Canal',    value: `${message.channel}`, inline: true },
+            { name: '🔢 Conteo',   value: `${linkCount}/${THRESHOLDS.LINK_COUNT - 1}`, inline: true },
           ]
         });
+        return;
       }
+
+      // ── UMBRAL SUPERADO: emitir advertencia formal ──────────
+      // Resetear el contador para que la próxima ráfaga también cuente desde 0
+      linkTracker.delete(message.author.id);
+
+      const warnCount = addWarn(message.author.id, `Links reiterados (${linkCount} en ventana)`);
+      const info = await applySanction(member, guild, warnCount);
+
+      await raidLog(guild, {
+        title: `🟥 INFRACCIÓN POR LINKS — Advertencia #${warnCount}`,
+        description:
+          `🚨 **VAR DE SEGURIDAD:** **${message.author.tag}** superó el límite de links en el estadio.\n\n` +
+          `📋 **Comisión Disciplinaria** ha aplicado sanción automática.\n` +
+          `**Sanción aplicada:** ${info.label}`,
+        color: warnCount >= 7 ? AR_COLORS.RAID_ALERT : warnCount >= 4 ? AR_COLORS.BAN : AR_COLORS.WARNING,
+        userId: message.author.id,
+        fields: [
+          { name: '🔢 Advertencia',  value: `#${warnCount}`, inline: true },
+          { name: '⚖️ Sanción',      value: info.label, inline: true },
+          { name: '🔗 Links en ráfaga', value: `${linkCount}`, inline: true },
+          { name: '📍 Canal',        value: `${message.channel}`, inline: true },
+        ]
+      });
       return;
     }
 
     // ══════════════════════════════════════════════════
-    //  3. DETECCIÓN DE MENCIONES MASIVAS
+    //  3. MENCIONES MASIVAS
     // ══════════════════════════════════════════════════
     const totalMentions = message.mentions.users.size + message.mentions.roles.size;
     if (totalMentions >= THRESHOLDS.MENTION_COUNT) {
-      const mentionCount = track(mentionTracker, message.author.id, THRESHOLDS.MENTION_WINDOW);
-
       await message.delete().catch(() => {});
       await autotimeout(member, 'Ping masivo a usuarios/roles', 15 * 60 * 1000);
 
@@ -126,9 +276,9 @@ module.exports = {
         userId: message.author.id,
         fields: [
           { name: '📢 Menciones', value: `${totalMentions}`, inline: true },
-          { name: '👤 Usuario', value: message.author.tag, inline: true },
-          { name: '📍 Canal', value: `${message.channel}`, inline: true },
-          { name: '🕐 Sanción', value: 'Timeout 15 minutos', inline: true },
+          { name: '👤 Usuario',   value: message.author.tag, inline: true },
+          { name: '📍 Canal',     value: `${message.channel}`, inline: true },
+          { name: '🕐 Sanción',   value: 'Timeout 15 minutos', inline: true },
         ]
       });
     }
