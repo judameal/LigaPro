@@ -6,10 +6,12 @@
  */
 
 const {
-  isWhitelisted, track, raidLog, autotimeout, autokick, autoban,
+  isWhitelisted, track, raidLog, autotimeout, autokick,
   spamTracker, linkTracker, mentionTracker,
   THRESHOLDS, AR_COLORS, LINK_REGEX, activateLockdown, raidState,
 } = require('../utils/antiraid');
+
+
 
 module.exports = {
   name: 'messageCreate',
@@ -87,22 +89,7 @@ module.exports = {
           ]
         });
       } else {
-        // Primera vez → advertencia
-        try {
-          await message.channel.send({
-            content: `${message.author}`,
-            embeds: [{
-              color: AR_COLORS.WARNING,
-              title: '⚠️ COMISIÓN DISCIPLINARIA',
-              description:
-                `Los links externos **no están permitidos** en LigaPro Ecuabet x4.\n` +
-                `Tu mensaje ha sido eliminado. Reincidencias conllevarán sanciones mayores.`,
-              footer: { text: '🛡️ Sistema de Seguridad LigaPro | VAR Digital' },
-              timestamp: new Date().toISOString(),
-            }]
-          }).then(m => setTimeout(() => m.delete().catch(() => {}), 8_000));
-        } catch (_) {}
-
+        // ── Link eliminado en silencio → log privado al canal de logs ──
         await raidLog(guild, {
           title: 'LINK EXTERNO ELIMINADO',
           description:
