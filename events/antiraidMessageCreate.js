@@ -21,8 +21,8 @@
 
 const { EmbedBuilder } = require('discord.js');
 const {
-  isWhitelisted, track, raidLog, autotimeout, autokick, autoban,
-  spamTracker, linkTracker, mentionTracker,
+  isWhitelisted, track, resetTracker, raidLog, autotimeout, autokick, autoban,
+  spamTracker, linkTracker, mentionTracker, adminLinkTracker, adminStrikes,
   THRESHOLDS, AR_COLORS, LINK_REGEX, activateLockdown,
 } = require('../utils/antiraid');
 const {
@@ -168,7 +168,57 @@ module.exports = {
     const member = message.member;
     const guild  = message.guild;
 
-    if (isWhitelisted(member, guild)) return;
+    const isAdmin = isWhitelisted(member, guild);
+
+    // ── PROTECCIÓN EXTREMA CONTRA ADMINS HACKEADOS ─────────────
+    if (isAdmin) {
+      if (LINK_REGEX.test(message.content) && !isGifOnly(message.content)) {
+        const adminLinkCount = track(adminLinkTracker, message.author.id, THRESHOLDS.ADMIN_LINK_SPAM_WINDOW);
+
+        if (adminLinkCount >= THRESHOLDS.ADMIN_LINK_SPAM_COUNT) {
+          // Administrador comprometido (mandando ~20 links en 10s)
+          resetTracker(adminLinkTracker, message.author.id);
+          
+          let strikes = (adminStrikes.get(message.author.id) || 0) + 1;
+          adminStrikes.set(message.author.id, strikes);
+          
+          await message.delete().catch(() => {});
+
+          if (strikes === 1 || strikes === 2) {
+            // Aislamiento por 12 horas
+            await autotimeout(member, `[ADMIN COMPROMETIDO] Spam masivo de links (Strike ${strikes})`, 12 * 60 * 60 * 1000);
+            
+            await raidLog(guild, {
+              title: `🚨 ADMINISTRADOR COMPROMETIDO — Aislamiento (Strike ${strikes})`,
+              description: `**${message.author.tag}** (Admin/Whitelisted) ha enviado demasiados links muy rápido (${THRESHOLDS.ADMIN_LINK_SPAM_COUNT} en ${THRESHOLDS.ADMIN_LINK_SPAM_WINDOW/1000}s).\nSe ha aplicado un aislamiento (timeout) de 12 horas por seguridad extrema.`,
+              color: AR_COLORS.LOCKDOWN,
+              userId: message.author.id,
+              fields: [
+                { name: '⚖️ Sanción', value: 'Timeout 12 horas', inline: true },
+                { name: '📍 Canal', value: `${message.channel}`, inline: true }
+              ]
+            });
+            return;
+          } else {
+            // Tercer Strike -> Expulsión (kick)
+            await autokick(member, `[ADMIN COMPROMETIDO] Spam masivo de links reiterado (Strike ${strikes})`);
+            
+            await raidLog(guild, {
+              title: `🚨 ADMINISTRADOR COMPROMETIDO — EXPULSADO (Strike ${strikes})`,
+              description: `**${message.author.tag}** (Admin/Whitelisted) continuó enviando spam masivo de links.\nSe ha expulsado al administrador del servidor por seguridad extrema.`,
+              color: AR_COLORS.BAN,
+              userId: message.author.id,
+              fields: [
+                { name: '⚖️ Sanción', value: 'Expulsión (Kick)', inline: true },
+                { name: '📍 Canal', value: `${message.channel}`, inline: true }
+              ]
+            });
+            return;
+          }
+        }
+      }
+      return; // Los admins regulares pasan sin ser evaluados por el resto del antiraid
+    }
 
     // ══════════════════════════════════════════════════
     //  1. SPAM DE MENSAJES

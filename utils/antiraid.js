@@ -51,6 +51,10 @@ const ticketTracker  = new Map();
 const mentionTracker = new Map();
 /** Map<guildId, { count, firstSeen }> */
 const joinBurst      = new Map();
+/** Map<userId, { count, firstSeen }> */
+const adminLinkTracker = new Map();
+/** Map<userId, number> */
+const adminStrikes   = new Map();
 
 // ── UMBRALES DE DETECCIÓN ───────────────────────────────────────
 const THRESHOLDS = {
@@ -69,6 +73,9 @@ const THRESHOLDS = {
   // Links externos — se necesitan MÁS DE 3 (4ª vez = infracción)
   LINK_COUNT:        4,           // se activa en la 4ª detección (>3)
   LINK_WINDOW:       2 * 60_000,  // ventana de 2 minutos
+  // Admin Link Spam (hacked admins enviando > 20 links en 10s)
+  ADMIN_LINK_SPAM_COUNT:  20,
+  ADMIN_LINK_SPAM_WINDOW: 10_000,
   // Menciones masivas
   MENTION_COUNT:     5,
   MENTION_WINDOW:    5_000,
@@ -342,4 +349,6 @@ module.exports = {
   ticketTracker,
   mentionTracker,
   joinBurst,
+  adminLinkTracker,
+  adminStrikes,
 };

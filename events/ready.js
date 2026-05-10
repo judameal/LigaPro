@@ -6,7 +6,22 @@ module.exports = {
   once: true,
   async execute(client) {
     console.log(`✅ Bot conectado como ${client.user.tag}`);
-    client.user.setActivity('🛡️ LigaPro Ecuabet x4 | VAR Activo', { type: ActivityType.Watching });
+    
+    // ── Rotación de Estados Dinámicos ────────────
+    const activities = [
+      { name: 'El server de la LigaPro Ecuabet', type: ActivityType.Watching },
+      { name: 'a los usuarios de LigaPro', type: ActivityType.Listening },
+      { name: 'Ser el mejor bot de la LigaPro', type: ActivityType.Playing },
+    ];
+
+    let i = 0;
+    setInterval(() => {
+      client.user.setActivity(activities[i].name, { type: activities[i].type });
+      i = (i + 1) % activities.length;
+    }, 5000); // Cambia cada 5 segundos
+    
+    // Establecer el primer estado inmediatamente
+    client.user.setActivity(activities[0].name, { type: activities[0].type });
 
     // ── Restaurar temp bans pendientes tras reinicio ────────────
     const tempBans = getPendingTempBans();
