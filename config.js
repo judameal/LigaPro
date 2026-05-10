@@ -26,5 +26,16 @@ module.exports = {
     LOG_CLEAR: 0x3498db,
     LOG_TICKET: 0x00ffff,
     LOG_FICHAJE: 0x1db954,
+    // ── AntiRaid ──────────────────────────────
+    RAID_ALERT:  0xFF0000,   // 🚨 Peligro máximo - VAR activo
+    LOCKDOWN:    0x8B0000,   // 🛑 Modo Estadio Seguro
+    AR_WARN:     0xFF6B00,   // 🟨 Tarjeta amarilla
+    AR_SAFE:     0x00C851,   // ✅ Sistema normal
+    AR_INFO:     0x1565C0,   // ℹ️ Info LigaPro
+    AR_SUSPICIOUS: 0xFFAB00, // ⚠️ Sospechoso
   },
+
+  // ── Canales protegidos (AntiRaid no toca estos canales) ─────
+  // Agrega aquí los IDs de canales de anuncios y resultados
+  PROTECTED_CHANNEL_IDS: [],
 };
