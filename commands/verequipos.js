@@ -15,15 +15,27 @@ const {
 } = require('discord.js');
 
 const { EQUIPOS, leerDB, tiempoRelativo } = require('./fichar');
+<<<<<<< HEAD
+=======
+const { COLORS } = require('../config');
+>>>>>>> 48eae957997c32d52953f6bc01198be34eb67a40
 
 const DT_ROLE_ID     = '1497693671141671034';
 const SUB_DT_ROLE_ID = '1497693705539424467';
 
+<<<<<<< HEAD
 const TIMEOUT_MS    = 5 * 60 * 1000; // 5 minutos inactividad
 const JUGADORES_MAX = 15;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Colores por equipo
+=======
+const TIMEOUT_MS      = 5 * 60 * 1000; // 5 minutos inactividad
+const JUGADORES_MAX   = 15;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Colores por equipo (reutilizamos los mismos de plantilla.js)
+>>>>>>> 48eae957997c32d52953f6bc01198be34eb67a40
 // ─────────────────────────────────────────────────────────────────────────────
 const COLORES_EQUIPO = {
   '1497694196205879326': '#FFD700',
@@ -45,6 +57,7 @@ const COLORES_EQUIPO = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+<<<<<<< HEAD
 // Helper: formato limpio de un miembro
 // ─────────────────────────────────────────────────────────────────────────────
 function nombreMiembro(m) {
@@ -54,12 +67,18 @@ function nombreMiembro(m) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+=======
+>>>>>>> 48eae957997c32d52953f6bc01198be34eb67a40
 // Construir el embed de un equipo concreto
 // ─────────────────────────────────────────────────────────────────────────────
 function buildEquipoEmbed(guild, db, equipoId, equipoInfo, index, total) {
   const color = COLORES_EQUIPO[equipoId] ?? '#3498db';
 
+<<<<<<< HEAD
   // Filtrar miembros del equipo (no bots)
+=======
+  // Miembros del equipo (no bots)
+>>>>>>> 48eae957997c32d52953f6bc01198be34eb67a40
   const miembros = guild.members.cache.filter(
     m => m.roles.cache.has(equipoId) && !m.user.bot
   );
@@ -70,11 +89,16 @@ function buildEquipoEmbed(guild, db, equipoId, equipoInfo, index, total) {
   const jugadores  = [];
 
   for (const [, m] of miembros) {
+<<<<<<< HEAD
     const esDT    = m.roles.cache.has(DT_ROLE_ID);
     const esSubDT = m.roles.cache.has(SUB_DT_ROLE_ID);
 
     if (esDT)    { dtMiembro    = m; continue; }
     if (esSubDT) { subDtMiembro = m; continue; }
+=======
+    if (m.roles.cache.has(DT_ROLE_ID))     { dtMiembro    = m; continue; }
+    if (m.roles.cache.has(SUB_DT_ROLE_ID)) { subDtMiembro = m; continue; }
+>>>>>>> 48eae957997c32d52953f6bc01198be34eb67a40
     jugadores.push(m);
   }
 
@@ -101,18 +125,30 @@ function buildEquipoEmbed(guild, db, equipoId, equipoInfo, index, total) {
     embed.addFields({ name: '━━━━  CUERPO TÉCNICO  ━━━━', value: '\u200B', inline: false });
 
     if (dtMiembro) {
+<<<<<<< HEAD
       const { display, user } = nombreMiembro(dtMiembro);
       embed.addFields({
         name: '🏅 Director Técnico',
         value: `<@${dtMiembro.id}>\n**${display}**\n\`@${user}\``,
+=======
+      embed.addFields({
+        name: '🏅 Director Técnico',
+        value: `${dtMiembro}\n\`${dtMiembro.user.tag}\``,
+>>>>>>> 48eae957997c32d52953f6bc01198be34eb67a40
         inline: true,
       });
     }
     if (subDtMiembro) {
+<<<<<<< HEAD
       const { display, user } = nombreMiembro(subDtMiembro);
       embed.addFields({
         name: '🎖️ Sub-Director Técnico',
         value: `<@${subDtMiembro.id}>\n**${display}**\n\`@${user}\``,
+=======
+      embed.addFields({
+        name: '🎖️ Sub-Director Técnico',
+        value: `${subDtMiembro}\n\`${subDtMiembro.user.tag}\``,
+>>>>>>> 48eae957997c32d52953f6bc01198be34eb67a40
         inline: true,
       });
     }
@@ -124,6 +160,7 @@ function buildEquipoEmbed(guild, db, equipoId, equipoInfo, index, total) {
   if (jugadores.length > 0) {
     embed.addFields({ name: '━━━━━  JUGADORES  ━━━━━', value: '\u200B', inline: false });
 
+<<<<<<< HEAD
     const lineas = jugadores.map((m, i) => {
       const { display, user } = nombreMiembro(m);
       return `\`${String(i + 1).padStart(2, ' ')}.\` **${display}** (\`@${user}\`)`;
@@ -152,6 +189,14 @@ function buildEquipoEmbed(guild, db, equipoId, equipoInfo, index, total) {
     if (chunks.length > 3) {
       embed.addFields({ name: '⚠️ Lista recortada', value: 'Hay demasiados jugadores para mostrar todos.', inline: false });
     }
+=======
+    // Agrupar en bloques de 3 para aprovechar columnas
+    const lista = jugadores.map((m, i) => `\`${i + 1}.\` ${m} — \`${m.user.tag}\``).join('\n');
+
+    // Discord field value límite: 1024 chars
+    const listaFinal = lista.length > 1000 ? lista.substring(0, 997) + '...' : lista;
+    embed.addFields({ name: `${jugadores.length} jugador(es)`, value: listaFinal, inline: false });
+>>>>>>> 48eae957997c32d52953f6bc01198be34eb67a40
   } else {
     embed.addFields({ name: '━━━━━  JUGADORES  ━━━━━', value: '*Sin jugadores fichados*', inline: false });
   }
@@ -191,6 +236,7 @@ module.exports = {
     .setDescription('Muestra todos los equipos de la liga con su plantilla, escudo, DT y Sub-DT'),
 
   async execute(interaction) {
+<<<<<<< HEAD
     try {
       await interaction.deferReply();
 
@@ -280,5 +326,57 @@ module.exports = {
         console.error('[VEREQUIPOS] Error crítico al responder:', e);
       }
     }
+=======
+    await interaction.deferReply();
+
+    const guild = interaction.guild;
+
+    // Traer miembros al caché
+    await guild.members.fetch().catch(() => {});
+
+    const db         = leerDB();
+    const equipoIds  = Object.keys(EQUIPOS);
+    const total      = equipoIds.length;
+
+    if (total === 0) {
+      return interaction.editReply({ content: '❌ No hay equipos configurados en el sistema.' });
+    }
+
+    let index = 0;
+
+    const embed = buildEquipoEmbed(guild, db, equipoIds[index], EQUIPOS[equipoIds[index]], index, total);
+    const row   = buildNavRow(index, total);
+
+    const msg = await interaction.editReply({ embeds: [embed], components: [row] });
+
+    // ── Collector de navegación ──────────────────────────────────────────────
+    const collector = msg.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time:          TIMEOUT_MS,
+      filter:        i => i.user.id === interaction.user.id,
+    });
+
+    collector.on('collect', async i => {
+      await i.deferUpdate();
+
+      if (i.customId === 'equipos_next' && index < total - 1) index++;
+      if (i.customId === 'equipos_prev' && index > 0)         index--;
+
+      const newEmbed = buildEquipoEmbed(guild, db, equipoIds[index], EQUIPOS[equipoIds[index]], index, total);
+      const newRow   = buildNavRow(index, total);
+
+      await msg.edit({ embeds: [newEmbed], components: [newRow] });
+    });
+
+    // Al expirar, deshabilitar botones
+    collector.on('end', async () => {
+      const disabledRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('equipos_prev_d').setLabel('◀ Anterior').setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId('equipos_info_d').setLabel(`${index + 1} / ${total}`).setStyle(ButtonStyle.Primary).setDisabled(true),
+        new ButtonBuilder().setCustomId('equipos_next_d').setLabel('Siguiente ▶').setStyle(ButtonStyle.Secondary).setDisabled(true),
+      );
+      await msg.edit({ components: [disabledRow] }).catch(() => {});
+    });
+>>>>>>> 48eae957997c32d52953f6bc01198be34eb67a40
   },
 };
