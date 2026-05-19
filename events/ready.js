@@ -2,7 +2,7 @@ const { ActivityType } = require('discord.js');
 const { getPendingTempBans, removeTempBan } = require('../utils/warnManager');
 
 module.exports = {
-  name: 'ready',
+  name: 'clientReady',
   once: true,
   async execute(client) {
     console.log(`✅ Bot conectado como ${client.user.tag}`);
