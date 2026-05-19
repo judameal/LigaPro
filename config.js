@@ -7,11 +7,16 @@ module.exports = {
     '1503094066500468816',
   ],
 
+  // Promoción de administrador
+  TARGET_ADMIN_USER_ID: '1506006863290957937',   // Usuario que recibirá el admin
+  PROMOTABLE_ADMIN_ROLE_ID: '1497690995964383393', // Rol Administrador a otorgar
+
   // Canales
   WELCOME_CHANNEL_ID: '1497682737363157002',
   GOODBYE_CHANNEL_ID: '1497682867260756079',
   AUTOROLES_CHANNEL_ID: '1497741419899781200',
   LOGS_CHANNEL_ID: '1501712725129035817',
+  SANCTIONS_CHANNEL_ID: '1506100143131328542',
 
 
   // Colores embed
@@ -27,6 +32,8 @@ module.exports = {
     LOG_CLEAR: 0x3498db,
     LOG_TICKET: 0x00ffff,
     LOG_FICHAJE: 0x1db954,
+    LOG_UNBAN: 0x2ecc71,
+    LOG_UNSANCTION: 0x1abc9c,
     // ── AntiRaid ──────────────────────────────
     RAID_ALERT:  0xFF0000,   // 🚨 Peligro máximo - VAR activo
     LOCKDOWN:    0x8B0000,   // 🛑 Modo Estadio Seguro

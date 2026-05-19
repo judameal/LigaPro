@@ -67,7 +67,10 @@ module.exports = {
         { name: '👤 Baneado', value: `${target.user}`, inline: true },
         { name: '🔨 Por', value: `${interaction.user}`, inline: true },
         { name: '📝 Razón', value: razon, inline: false },
-      ]
+      ],
+      sendToSanctions: true,
+      sanctionsTitle: '🔨 Baneo Aplicado',
+      sanctionsDescription: `**${target.user.tag}** ha sido baneado del servidor por **${interaction.user.tag}**.`,
     });
   },
 };

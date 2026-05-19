@@ -75,7 +75,10 @@ module.exports = {
         { name: '🔨 Por', value: `${interaction.user}`, inline: true },
         { name: '⏱️ Duración', value: `${horas} hora(s)`, inline: true },
         { name: '📝 Razón', value: razon, inline: false },
-      ]
+      ],
+      sendToSanctions: true,
+      sanctionsTitle: '⏰ Sanción Aplicada',
+      sanctionsDescription: `**${target.user.tag}** ha sido aislado por **${interaction.user.tag}** durante **${horas} hora(s)**.`,
     });
   },
 };
