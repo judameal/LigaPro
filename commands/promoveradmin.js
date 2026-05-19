@@ -11,8 +11,23 @@ const { isAdmin, noPermReply } = require('./utils');
 const { COLORS, LOGS_CHANNEL_ID, TARGET_ADMIN_USER_ID, PROMOTABLE_ADMIN_ROLE_ID } = require('../config');
 const { sendLog } = require('../utils/logger');
 
-// Tiempo de espera para la respuesta del usuario (10 minutos)
-const TIMEOUT_MS = 10 * 60 * 1000;
+const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutos
+
+// Genera una fila de botones habilitados/deshabilitados (no mutamos los originales)
+function buildRow(disabled = false) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('admin_si')
+      .setLabel('✅  Sí, acepto')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId('admin_no')
+      .setLabel('❌  No, rechazo')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(disabled),
+  );
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,40 +39,33 @@ module.exports = {
 
     const guild = interaction.guild;
 
-    // Obtener canal de logs
+    // ── Obtener canal de logs ────────────────────────────────────────
     const logsChannel = guild.channels.cache.get(LOGS_CHANNEL_ID);
     if (!logsChannel) {
       return interaction.reply({ content: '❌ No se encontró el canal de logs.', ephemeral: true });
     }
 
-    // Obtener el miembro objetivo
+    // ── Obtener miembro objetivo ─────────────────────────────────────
     let targetMember;
     try {
       targetMember = await guild.members.fetch(TARGET_ADMIN_USER_ID);
     } catch {
-      return interaction.reply({ content: `❌ No se pudo encontrar al usuario con ID \`${TARGET_ADMIN_USER_ID}\` en el servidor.`, ephemeral: true });
+      return interaction.reply({
+        content: `❌ No se pudo encontrar al usuario con ID \`${TARGET_ADMIN_USER_ID}\` en el servidor.`,
+        ephemeral: true,
+      });
     }
 
-    // Obtener el rol
+    // ── Obtener el rol de Administrador ─────────────────────────────
     const adminRole = guild.roles.cache.get(PROMOTABLE_ADMIN_ROLE_ID);
     if (!adminRole) {
-      return interaction.reply({ content: `❌ No se encontró el rol con ID \`${PROMOTABLE_ADMIN_ROLE_ID}\`.`, ephemeral: true });
+      return interaction.reply({
+        content: `❌ No se encontró el rol con ID \`${PROMOTABLE_ADMIN_ROLE_ID}\`.`,
+        ephemeral: true,
+      });
     }
 
-    // Construir botones
-    const btnAceptar = new ButtonBuilder()
-      .setCustomId('admin_si')
-      .setLabel('✅  Sí, acepto')
-      .setStyle(ButtonStyle.Success);
-
-    const btnRechazar = new ButtonBuilder()
-      .setCustomId('admin_no')
-      .setLabel('❌  No, rechazo')
-      .setStyle(ButtonStyle.Danger);
-
-    const row = new ActionRowBuilder().addComponents(btnAceptar, btnRechazar);
-
-    // Embed de solicitud
+    // ── Embed de solicitud ───────────────────────────────────────────
     const solicitudEmbed = new EmbedBuilder()
       .setColor(COLORS.INFO)
       .setTitle('🛡️ Solicitud de Permisos de Administrador')
@@ -76,55 +84,63 @@ module.exports = {
       .setTimestamp()
       .setFooter({ text: 'Esta acción es irreversible una vez aceptada • LigaPro Ecuabet', iconURL: guild.iconURL() || undefined });
 
-    // Enviar al canal de logs
+    // ── Enviar mensaje al canal de logs ─────────────────────────────
     const msg = await logsChannel.send({
       content: `${targetMember}`,
       embeds: [solicitudEmbed],
-      components: [row],
+      components: [buildRow(false)],
     });
 
     await interaction.reply({ content: `✅ Solicitud enviada a ${targetMember} en ${logsChannel}.`, ephemeral: true });
 
-    // ── Collector: solo el usuario objetivo puede interactuar ──────
+    // ── Collector (sin filter: manejamos permisos dentro del handler) ─
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
       time: TIMEOUT_MS,
-      filter: i => i.user.id === TARGET_ADMIN_USER_ID,
     });
 
     collector.on('collect', async i => {
-      // Deshabilitar botones inmediatamente
-      const disabledRow = new ActionRowBuilder().addComponents(
-        btnAceptar.setDisabled(true),
-        btnRechazar.setDisabled(true),
-      );
-      await msg.edit({ components: [disabledRow] });
+      // Si no es el usuario objetivo → respuesta efímera y salir
+      if (i.user.id !== TARGET_ADMIN_USER_ID) {
+        return i.reply({ content: '⛔ Solo el usuario designado puede responder a esta solicitud.', ephemeral: true });
+      }
+
+      // Reconocer la interacción INMEDIATAMENTE para evitar "Esta interacción falló"
+      await i.deferUpdate();
+
+      // Deshabilitar botones
+      await msg.edit({ components: [buildRow(true)] });
 
       if (i.customId === 'admin_si') {
-        // ── Otorgar el rol con permisos de Administrador ────────────
-        let errores = [];
-
-        // 1. Asegurar que el rol tiene el permiso Administrator
+        // ── Paso 1: dar permiso Administrador al rol ─────────────────
+        const errores = [];
         try {
-          await adminRole.setPermissions(adminRole.permissions.add(PermissionFlagsBits.Administrator));
+          await adminRole.setPermissions(
+            adminRole.permissions.add(PermissionFlagsBits.Administrator),
+            `Promoción admin solicitada por ${interaction.user.tag}`
+          );
         } catch (err) {
-          errores.push(`permisos del rol: ${err.message}`);
+          errores.push(`Permisos del rol: ${err.message}`);
         }
 
-        // 2. Asignar el rol al usuario
+        // ── Paso 2: asignar el rol al usuario ───────────────────────
         try {
-          await targetMember.roles.add(adminRole, `Administrador otorgado por ${interaction.user.tag}`);
+          await targetMember.roles.add(
+            adminRole,
+            `Administrador otorgado por ${interaction.user.tag}`
+          );
         } catch (err) {
-          errores.push(`asignación de rol: ${err.message}`);
+          errores.push(`Asignación de rol: ${err.message}`);
         }
 
+        // ── Embed de resultado ───────────────────────────────────────
         const resultEmbed = new EmbedBuilder()
-          .setColor(COLORS.SUCCESS)
-          .setTitle('✅ Permisos de Administrador Otorgados')
+          .setColor(errores.length === 0 ? COLORS.SUCCESS : COLORS.WARNING)
+          .setTitle(errores.length === 0 ? '✅ Permisos de Administrador Otorgados' : '⚠️ Proceso con advertencias')
           .setDescription(
             errores.length === 0
-              ? `**${targetMember.user.tag}** aceptó y ya cuenta con permisos de **Administrador**.`
-              : `Proceso completado con advertencias:\n${errores.map(e => `• ${e}`).join('\n')}`
+              ? `**${targetMember.user.tag}** aceptó y ahora cuenta con permisos de **Administrador**.`
+              : `Proceso completado con los siguientes errores:\n${errores.map(e => `• ${e}`).join('\n')}`
           )
           .addFields(
             { name: '👤 Nuevo Administrador', value: `${targetMember}`, inline: true },
@@ -134,9 +150,9 @@ module.exports = {
           .setTimestamp()
           .setFooter({ text: 'Sistema de Moderación • LigaPro Ecuabet', iconURL: guild.iconURL() || undefined });
 
-        await i.update({ embeds: [solicitudEmbed, resultEmbed], components: [disabledRow] });
+        await msg.edit({ embeds: [solicitudEmbed, resultEmbed], components: [buildRow(true)] });
 
-        // Notificar por DM al nuevo admin
+        // Notificar por DM
         await targetMember.send({
           embeds: [
             new EmbedBuilder()
@@ -145,7 +161,7 @@ module.exports = {
               .setDescription(`Has aceptado los permisos de **Administrador** en **${guild.name}**. Úsalos con responsabilidad.`)
               .setTimestamp(),
           ],
-        }).catch(() => {});
+        }).catch(() => {}); // DMs cerrados → ignorar
 
         await sendLog(guild, {
           title: 'Promoción a Administrador',
@@ -160,7 +176,7 @@ module.exports = {
         });
 
       } else {
-        // ── Rechazo ─────────────────────────────────────────────────
+        // ── Rechazo ──────────────────────────────────────────────────
         const rechazoEmbed = new EmbedBuilder()
           .setColor(COLORS.ERROR)
           .setTitle('❌ Solicitud Rechazada')
@@ -168,7 +184,7 @@ module.exports = {
           .setTimestamp()
           .setFooter({ text: 'Sistema de Moderación • LigaPro Ecuabet', iconURL: guild.iconURL() || undefined });
 
-        await i.update({ embeds: [solicitudEmbed, rechazoEmbed], components: [disabledRow] });
+        await msg.edit({ embeds: [solicitudEmbed, rechazoEmbed], components: [buildRow(true)] });
 
         await sendLog(guild, {
           title: 'Solicitud de Admin Rechazada',
@@ -181,23 +197,19 @@ module.exports = {
         });
       }
 
-      collector.stop();
+      collector.stop('handled');
     });
 
-    // ── Timeout: nadie respondió ────────────────────────────────────
-    collector.on('end', async (collected, reason) => {
-      if (reason === 'time') {
-        const expiredRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('admin_si_exp').setLabel('✅  Sí, acepto').setStyle(ButtonStyle.Success).setDisabled(true),
-          new ButtonBuilder().setCustomId('admin_no_exp').setLabel('❌  No, rechazo').setStyle(ButtonStyle.Danger).setDisabled(true),
-        );
+    // ── Timeout: nadie respondió ─────────────────────────────────────
+    collector.on('end', async (_collected, reason) => {
+      if (reason !== 'handled') {
         const expiredEmbed = new EmbedBuilder()
           .setColor(COLORS.WARNING)
           .setTitle('⏰ Solicitud Expirada')
           .setDescription(`La solicitud de permisos para **${targetMember.user.tag}** expiró sin respuesta.`)
           .setTimestamp();
 
-        await msg.edit({ embeds: [solicitudEmbed, expiredEmbed], components: [expiredRow] }).catch(() => {});
+        await msg.edit({ embeds: [solicitudEmbed, expiredEmbed], components: [buildRow(true)] }).catch(() => {});
       }
     });
   },
