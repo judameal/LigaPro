@@ -182,7 +182,12 @@ module.exports = {
         }
       }
 
-      await interaction.editReply({ embeds: [embed] });
+      // Taggear al equipo para que todos sus miembros reciban la notificación
+      await interaction.editReply({
+        content: `<@&${equipoRol.id}>`,
+        embeds: [embed],
+        allowedMentions: { roles: [equipoRol.id] },
+      });
 
     } catch (error) {
       console.error("Error en comando plantilla:", error);
